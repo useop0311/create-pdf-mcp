@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from mcp.server import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 
 from .config import settings
 from .models.exam import ExamPDFRequest, ExamPDFResponse
@@ -130,7 +131,8 @@ async def periodic_cleanup():
 async def lifespan(app: FastAPI):
     # Start background cleanup
     cleanup_task = asyncio.create_task(periodic_cleanup())
-    yield
+    async with mcp.session_manager.run():
+        yield
     cleanup_task.cancel()
 
 
@@ -164,9 +166,21 @@ async def get_local_file(filename: str):
     return FileResponse(file_path, media_type=content_type)
 
 
-# Mount MCP Streamable HTTP and SSE apps
-app.mount("/mcp", mcp.streamable_http_app())
-app.mount("/sse", mcp.sse_app())
+# Configure transport security allowing tunnel/external domain hosts (e.g. Cloudflare Tunnel)
+security_settings = TransportSecuritySettings(enable_dns_rebinding_protection=False)
+
+# Initialize MCP Streamable HTTP and SSE apps
+http_app = mcp.streamable_http_app(streamable_http_path="/mcp", transport_security=security_settings)
+sse_app = mcp.sse_app(transport_security=security_settings)
+
+# Mount MCP Streamable HTTP endpoints (/mcp and /mcp/) directly to avoid 307 redirects and sub-app 404s
+mcp_endpoint = http_app.routes[0].endpoint
+app.router.add_route("/mcp", mcp_endpoint, methods=["GET", "POST", "DELETE", "OPTIONS"])
+app.router.add_route("/mcp/", mcp_endpoint, methods=["GET", "POST", "DELETE", "OPTIONS"])
+
+# Mount MCP SSE endpoints (/sse and /messages)
+for route in sse_app.routes:
+    app.routes.append(route)
 
 
 def main():

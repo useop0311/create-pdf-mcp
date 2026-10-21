@@ -156,3 +156,42 @@ async def test_fastapi_endpoints(rich_exam_request):
         assert f_res.status_code == 200
         assert f_res.headers["content-type"] == "application/pdf"
         assert f_res.content.startswith(b"%PDF-")
+
+
+@pytest.mark.asyncio
+async def test_mcp_streamable_http_and_sse_endpoints():
+    """Verifies that MCP Streamable HTTP (/mcp) and SSE (/sse) work with custom domains (e.g. Cloudflare Tunnel)."""
+    from fastapi.testclient import TestClient
+
+    with TestClient(app) as client:
+        # 1. MCP Streamable HTTP /mcp
+        init_payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "test-client", "version": "1.0.0"},
+            },
+        }
+        headers = {
+            "Host": "pdf-mcp.0311.kr",
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
+        res_mcp = client.post("/mcp", json=init_payload, headers=headers, follow_redirects=False)
+        assert res_mcp.status_code == 200
+        assert "text/event-stream" in res_mcp.headers.get("content-type", "")
+        assert "CreatePDFMCP" in res_mcp.text or "capabilities" in res_mcp.text
+
+        # 2. MCP Streamable HTTP /mcp/ (trailing slash)
+        res_mcp_slash = client.post("/mcp/", json=init_payload, headers=headers, follow_redirects=False)
+        assert res_mcp_slash.status_code == 200
+
+        # 3. MCP SSE /sse
+        with client.stream("GET", "/sse", headers={"Host": "pdf-mcp.0311.kr"}) as sse_stream:
+            assert sse_stream.status_code == 200
+            assert "text/event-stream" in sse_stream.headers.get("content-type", "")
+            first_line = next(sse_stream.iter_lines())
+            assert "event: endpoint" in first_line
