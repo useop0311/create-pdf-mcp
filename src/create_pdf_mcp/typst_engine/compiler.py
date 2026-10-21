@@ -1,10 +1,13 @@
 import io
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
 from pypdf import PdfReader
 import typst
+
+logger = logging.getLogger(__name__)
 
 from ..models.exam import ExamPDFRequest, ProblemItem
 from ..processors.math_text import markdown_to_typst
@@ -207,6 +210,9 @@ def compile_typst_to_pdf(typst_source: str) -> bytes:
     try:
         pdf_bytes = typst.compile(temp_path, root="/")
         return pdf_bytes
+    except Exception as e:
+        logger.error(f"Typst compilation failed: {e}\nTypst source snippet:\n{typst_source[:1500]}")
+        raise
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)

@@ -126,6 +126,29 @@ async def test_create_exam_pdf_end_to_end(rich_exam_request):
 
 
 @pytest.mark.asyncio
+async def test_create_exam_pdf_with_displaystyle_integral():
+    r"""Regression test: verifies create_exam_pdf does not raise TypstError on \displaystyle\int."""
+    req = ExamPDFRequest(
+        title="미적분 실전 모의고사",
+        layout_mode="exam_2col",
+        problems=[
+            ProblemItem(
+                number=1,
+                points=4,
+                stem=r"함수 $f(x)$에 대하여 $\displaystyle\int_0^1 f(x) dx = 3$일 때, $\displaystyle\int_0^1 (2f(x) + 1) dx$의 값을 구하시오.",
+                choices=["$5$", "$6$", "$7$", "$8$", "$9$"],
+                answer="③",
+                solution=r"$\displaystyle\int_0^1 (2f(x) + 1) dx = 2\displaystyle\int_0^1 f(x) dx + \displaystyle\int_0^1 1 dx = 2(3) + 1 = 7$",
+            )
+        ]
+    )
+    resp = await create_exam_pdf(req)
+    assert resp.pdf_url.endswith(".pdf")
+    assert resp.problem_count == 1
+    assert resp.page_count >= 1
+
+
+@pytest.mark.asyncio
 async def test_preview_figure_tool():
     spec = FunctionPlotSpec(
         x_range=(-2.0, 2.0),
