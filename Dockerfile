@@ -10,16 +10,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy dependency definition and install
+# Copy dependency definition and install dependencies
 COPY pyproject.toml README.md ./
-RUN pip install --no-cache-dir .
+RUN python -c 'import tomllib; c = tomllib.load(open("pyproject.toml", "rb")); print("\n".join(c["project"]["dependencies"]))' > requirements.txt \
+    && pip install --no-cache-dir hatchling -r requirements.txt
 
 # Copy application source
 COPY src/ /app/src/
 
+# Install application package
+RUN pip install --no-cache-dir --no-build-isolation --no-deps .
+
 # Warm up typst package cache (pre-fetch @preview/mitex if needed or install local packages)
 ENV TYPST_FONT_PATHS=/usr/share/fonts/opentype/noto:/usr/share/fonts/truetype
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app/src
 
 EXPOSE 8000
 

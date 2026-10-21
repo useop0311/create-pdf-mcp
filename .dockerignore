@@ -1,0 +1,13 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.git
+.gitignore
+.env
+.idea
+data/files/*
+!data/files/.gitkeep
+output_samples
