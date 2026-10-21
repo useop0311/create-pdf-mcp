@@ -1,6 +1,7 @@
 import math
 from xml.sax.saxutils import escape
 from ..models.figures import GeometryPhysicsSpec, GeoPoint, GeoSegment, GeoCircle, GeoAngle, PhysicsObject
+from .math_text import format_svg_math_label
 
 
 def render_geometry_physics_svg(spec: GeometryPhysicsSpec) -> str:
@@ -162,7 +163,7 @@ def render_geometry_physics_svg(spec: GeometryPhysicsSpec) -> str:
                         lbl_r = 22.0 / px_scale
                         lx = to_svg_x(vx + lbl_r * math.cos(mid_a))
                         ly = to_svg_y(vy + lbl_r * math.sin(mid_a))
-                        elements.append(f'<text x="{lx:.1f}" y="{ly + 3:.1f}" font-size="10" font-style="italic" text-anchor="middle" fill="#111">{escape(ang.label)}</text>')
+                        elements.append(f'<text x="{lx:.1f}" y="{ly + 3:.1f}" font-size="10" font-style="italic" text-anchor="middle" fill="#111">{format_svg_math_label(ang.label)}</text>')
 
     # 5. Segments
     for seg in spec.segments:
@@ -195,7 +196,7 @@ def render_geometry_physics_svg(spec: GeometryPhysicsSpec) -> str:
                     nx = -dy / l * 10.0
                     ny = dx / l * 10.0
                     elements.append(
-                        f'<text x="{mx + nx:.1f}" y="{my + ny + 3:.1f}" font-size="9" text-anchor="middle" fill="#333">{escape(seg.length_label)}</text>'
+                        f'<text x="{mx + nx:.1f}" y="{my + ny + 3:.1f}" font-size="9" text-anchor="middle" fill="#333">{format_svg_math_label(seg.length_label)}</text>'
                     )
 
     # 6. Physics Objects
@@ -212,7 +213,7 @@ def render_geometry_physics_svg(spec: GeometryPhysicsSpec) -> str:
             if po.label:
                 lx = (spx + epx) / 2.0
                 ly = (spy + epy) / 2.0 - 5.0
-                elements.append(f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="10" font-weight="bold" font-style="italic" fill="{escape(po.color)}">{escape(po.label)}</text>')
+                elements.append(f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="10" font-weight="bold" font-style="italic" fill="{escape(po.color)}">{format_svg_math_label(po.label)}</text>')
 
         elif po.kind == "block":
             bw = po.size[0] * px_scale
@@ -225,7 +226,7 @@ def render_geometry_physics_svg(spec: GeometryPhysicsSpec) -> str:
                 f'fill="#fff" stroke="{escape(po.color)}" stroke-width="1.5"/>'
             )
             if po.label:
-                elements.append(f'<text x="0" y="3" font-size="10" text-anchor="middle" fill="#111">{escape(po.label)}</text>')
+                elements.append(f'<text x="0" y="3" font-size="10" text-anchor="middle" fill="#111">{format_svg_math_label(po.label)}</text>')
             elements.append('</g>')
 
         elif po.kind == "sphere":
@@ -234,7 +235,7 @@ def render_geometry_physics_svg(spec: GeometryPhysicsSpec) -> str:
                 f'<circle cx="{spx:.1f}" cy="{spy:.1f}" r="{r:.1f}" fill="#fff" stroke="{escape(po.color)}" stroke-width="1.4"/>'
             )
             if po.label:
-                elements.append(f'<text x="{spx:.1f}" y="{spy + 3:.1f}" font-size="10" text-anchor="middle" fill="#111">{escape(po.label)}</text>')
+                elements.append(f'<text x="{spx:.1f}" y="{spy + 3:.1f}" font-size="10" text-anchor="middle" fill="#111">{format_svg_math_label(po.label)}</text>')
 
         elif po.kind == "incline" and po.end_pos:
             epx, epy = to_svg_x(po.end_pos[0]), to_svg_y(po.end_pos[1])
@@ -319,14 +320,14 @@ def render_geometry_physics_svg(spec: GeometryPhysicsSpec) -> str:
 
             elements.append(
                 f'<text x="{px + ox:.1f}" y="{py + oy:.1f}" font-size="10.5" font-style="italic" '
-                f'text-anchor="{anchor}" fill="#111">{escape(label)}</text>'
+                f'text-anchor="{anchor}" fill="#111">{format_svg_math_label(label)}</text>'
             )
 
     # Caption if present
     if spec.caption:
         elements.append(
             f'<text x="{width / 2:.1f}" y="{height - 4:.1f}" font-size="9" text-anchor="middle" fill="#666">'
-            f'{escape(spec.caption)}</text>'
+            f'{format_svg_math_label(spec.caption)}</text>'
         )
 
     elements.append("</svg>")

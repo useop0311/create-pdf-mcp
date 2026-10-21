@@ -36,6 +36,49 @@ def test_function_plot_svg():
     assert "axis-arrow" in svg
     assert "y=f(x)" in svg
     assert "P(1, -2)" in svg
+    assert 'clip-path="url(#plot-clip)"' in svg
+
+
+def test_parabola_curve_evaluation_and_clipping():
+    # Verify non-linear curve evaluation (avoiding y=x bug)
+    spec = FunctionPlotSpec(
+        x_range=(-1.0, 5.0),
+        y_range=(-1.0, 5.0),
+        functions=[
+            FunctionCurve(expr="-x**2 + 4*x", label="y=-x^2+4x"),
+            FunctionCurve(expr="x", label="y=x"),
+        ],
+        points=[
+            PlotPoint(x=3.0, y=3.0, label="(3, 3)", show_projection="both"),
+        ],
+        shaded_areas=[
+            ShadedArea(expr1="-x**2 + 4*x", expr2="x", x_range=(0.0, 3.0))
+        ]
+    )
+    svg = render_figure_to_svg(spec)
+    assert 'clipPath id="plot-clip"' in svg
+    assert 'paint-order="stroke fill"' in svg
+
+    # Extract path for -x**2 + 4*x
+    import re
+    paths = re.findall(r'<path d="([^"]+)" fill="none"[^>]*>', svg)
+    assert len(paths) >= 2
+
+    # Path 0 should be -x**2 + 4*x
+    # Vertex is at x=2, y=4. At x=2, svg_x = 25 + (2 - (-1))/6 * 270 = 25 + 135 = 160.0
+    # svg_y = 25 + (5 - 4)/6 * 190 = 25 + 31.67 = 56.7
+    pts_str = paths[0].split()
+    # Find points near svg_x=160
+    found_vertex = False
+    for i in range(1, len(pts_str) - 2, 3):
+        x = float(pts_str[i])
+        y = float(pts_str[i + 1])
+        if abs(x - 160.0) < 2.0:
+            assert abs(y - 56.7) < 3.0  # y must be near 4 (svg_y 56.7), NOT 160 (which was the y=x bug!)
+            found_vertex = True
+            break
+    assert found_vertex, "Vertex of parabola at x=2, y=4 must be present with true mathematical y-coord"
+
 
 
 def test_geometry_physics_svg():

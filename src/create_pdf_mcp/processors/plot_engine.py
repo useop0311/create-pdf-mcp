@@ -3,6 +3,7 @@ import numpy as np
 import sympy as sp
 from xml.sax.saxutils import escape
 from ..models.figures import FunctionPlotSpec, FunctionCurve, PlotPoint, ShadedArea
+from .math_text import format_svg_math_label
 
 
 def render_function_plot_svg(spec: FunctionPlotSpec) -> str:
@@ -12,6 +13,8 @@ def render_function_plot_svg(spec: FunctionPlotSpec) -> str:
     - Centered coordinate axes with arrowheads
     - Italic axis labels: x, y, and origin O
     - Mathematically evaluated curves (SymPy + NumPy) with discontinuity detection
+    - Bounded canvas clipping so curves never bleed past axes into margins
+    - Smart collision-free curve labels with crisp white outline
     - Shaded integral/area regions
     - Dashed projection lines and coordinate tick labels
     """
@@ -40,9 +43,9 @@ def render_function_plot_svg(spec: FunctionPlotSpec) -> str:
     def to_svg_y(y: float) -> float:
         return pad_top + (y_max - y) / (y_max - y_min) * plot_h
 
-    # Clamping for safety
-    y_clamp_min = y_min - (y_max - y_min) * 1.5
-    y_clamp_max = y_max + (y_max - y_min) * 1.5
+    # Clamping for calculation safety
+    y_clamp_min = y_min - (y_max - y_min) * 2.0
+    y_clamp_max = y_max + (y_max - y_min) * 2.0
 
     origin_x = to_svg_x(0.0)
     origin_y = to_svg_y(0.0)
@@ -53,19 +56,25 @@ def render_function_plot_svg(spec: FunctionPlotSpec) -> str:
 
     elements: list[str] = []
 
-    # SVG Header and Definitions (Arrowheads and Fonts)
+    # SVG Header and Definitions (Arrowheads, Fonts, and Plot Clip Path)
     elements.append(
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
         f'width="{spec.width_cm}cm" height="{(spec.width_cm * height / width):.2f}cm" '
         f'style="font-family: \'AppleMyungjo\', \'Apple SD Gothic Neo\', \'Noto Serif CJK KR\', \'Noto Serif KR\', \'New Computer Modern\', serif;">'
     )
-    elements.append("""
+    elements.append(f"""
     <defs>
       <marker id="axis-arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
         <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#111" />
       </marker>
+      <clipPath id="plot-clip">
+        <rect x="{pad_left:.1f}" y="{pad_top:.1f}" width="{plot_w:.1f}" height="{plot_h:.1f}" />
+      </clipPath>
     </defs>
     """)
+
+    # Elements clipped to the plot rectangle (shaded areas, grid, asymptotes, and curves)
+    elements.append('<g clip-path="url(#plot-clip)">')
 
     # 1. Shaded Areas (drawn underneath curves and axes)
     for area in spec.shaded_areas:
@@ -113,23 +122,8 @@ def render_function_plot_svg(spec: FunctionPlotSpec) -> str:
             sy = to_svg_y(ay)
             elements.append(f'<line x1="{pad_left}" y1="{sy:.1f}" x2="{width - pad_right}" y2="{sy:.1f}" stroke="#777" stroke-width="1.0" stroke-dasharray="3,3"/>')
 
-    # 4. Coordinate Axes (x-axis and y-axis)
-    elements.append(
-        f'<line x1="{pad_left - 8:.1f}" y1="{axis_y:.1f}" x2="{width - pad_right + 12:.1f}" y2="{axis_y:.1f}" '
-        f'stroke="#111" stroke-width="1.2" marker-end="url(#axis-arrow)" />'
-    )
-    elements.append(
-        f'<line x1="{axis_x:.1f}" y1="{height - pad_bottom + 8:.1f}" x2="{axis_x:.1f}" y2="{pad_top - 12:.1f}" '
-        f'stroke="#111" stroke-width="1.2" marker-end="url(#axis-arrow)" />'
-    )
-
-    # Axis Labels (x, y, O in math italics)
-    elements.append(f'<text x="{width - pad_right + 14:.1f}" y="{axis_y + 4:.1f}" font-size="12" font-style="italic" fill="#111">x</text>')
-    elements.append(f'<text x="{axis_x - 3:.1f}" y="{pad_top - 14:.1f}" font-size="12" font-style="italic" text-anchor="middle" fill="#111">y</text>')
-    if x_min < 0 < x_max and y_min < 0 < y_max:
-        elements.append(f'<text x="{axis_x - 6:.1f}" y="{axis_y + 12:.1f}" font-size="11" font-style="italic" text-anchor="end" fill="#111">O</text>')
-
-    # 5. Function Curves
+    # 4. Function Curves
+    curve_labels: list[str] = []
     for curve in spec.functions:
         try:
             x_sym = sp.Symbol("x")
@@ -185,24 +179,92 @@ def render_function_plot_svg(spec: FunctionPlotSpec) -> str:
                     continue
                 d_cmds = [f"M {to_svg_x(seg[0][0]):.1f} {to_svg_y(seg[0][1]):.1f}"]
                 for pt in seg[1:]:
-                    d_cmds.append(f"L {to_svg_x(pt[0]):.1f} {to_svg_y(pt[0]):.1f}")
+                    d_cmds.append(f"L {to_svg_x(pt[0]):.1f} {to_svg_y(pt[1]):.1f}")
                 elements.append(
                     f'<path d="{" ".join(d_cmds)}" fill="none" stroke="{escape(curve.color)}" '
                     f'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" {dash}/>'
                 )
 
-            # Curve Label if specified
-            if curve.label and len(segments) > 0 and len(segments[-1]) > 0:
-                last_pt = segments[-1][-1]
-                lx = min(width - 5, to_svg_x(last_pt[0]) + 4)
-                ly = max(15, to_svg_y(last_pt[1]) - 4)
-                elements.append(f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="10" font-style="italic" fill="{escape(curve.color)}">{escape(curve.label)}</text>')
+            # Smart Curve Label Positioning (stored to render outside clip-path)
+            if curve.label and segments:
+                target_seg = segments[-1]
+                vis = [
+                    pt for pt in target_seg
+                    if pad_left <= to_svg_x(pt[0]) <= width - pad_right
+                    and pad_top <= to_svg_y(pt[1]) <= height - pad_bottom
+                ]
+                if not vis:
+                    vis = target_seg
+
+                idx = int(len(vis) * 0.82)
+                idx = min(idx, len(vis) - 1)
+                pt = vis[idx]
+                sx = to_svg_x(pt[0])
+                sy = to_svg_y(pt[1])
+
+                p_prev = vis[max(0, idx - 4)]
+                p_next = vis[min(len(vis) - 1, idx + 4)]
+                dx = to_svg_x(p_next[0]) - to_svg_x(p_prev[0])
+                dy = to_svg_y(p_next[1]) - to_svg_y(p_prev[1])
+                dist = math.hypot(dx, dy)
+
+                if dist > 1e-4:
+                    nx = -dy / dist
+                    ny = dx / dist
+                    if ny > 0:
+                        nx, ny = -nx, -ny
+                else:
+                    nx, ny = 0.0, -1.0
+
+                offset = 13.0
+                lx = sx + nx * offset
+                ly = sy + ny * offset
+
+                if lx > width - pad_right - 25:
+                    anchor = "end"
+                    lx = min(width - pad_right - 2, lx)
+                elif lx < pad_left + 25:
+                    anchor = "start"
+                    lx = max(pad_left + 2, lx)
+                else:
+                    anchor = "middle"
+
+                ly = max(pad_top + 10, min(height - pad_bottom - 4, ly))
+
+                formatted_label = format_svg_math_label(curve.label)
+                curve_labels.append(
+                    f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="10" font-style="italic" '
+                    f'fill="{escape(curve.color)}" stroke="white" stroke-width="2.5" '
+                    f'paint-order="stroke fill" text-anchor="{anchor}">{formatted_label}</text>'
+                )
 
         except Exception as e:
             # Fallback for complex expressions
             pass
 
-    # 6. Points, Projections, and Labels
+    # End clipped group
+    elements.append("</g>")
+
+    # 5. Coordinate Axes (x-axis and y-axis, unclipped so arrowheads are sharp)
+    elements.append(
+        f'<line x1="{pad_left - 8:.1f}" y1="{axis_y:.1f}" x2="{width - pad_right + 12:.1f}" y2="{axis_y:.1f}" '
+        f'stroke="#111" stroke-width="1.2" marker-end="url(#axis-arrow)" />'
+    )
+    elements.append(
+        f'<line x1="{axis_x:.1f}" y1="{height - pad_bottom + 8:.1f}" x2="{axis_x:.1f}" y2="{pad_top - 12:.1f}" '
+        f'stroke="#111" stroke-width="1.2" marker-end="url(#axis-arrow)" />'
+    )
+
+    # Axis Labels (x, y, O in math italics)
+    elements.append(f'<text x="{width - pad_right + 14:.1f}" y="{axis_y + 4:.1f}" font-size="12" font-style="italic" fill="#111">x</text>')
+    elements.append(f'<text x="{axis_x - 3:.1f}" y="{pad_top - 14:.1f}" font-size="12" font-style="italic" text-anchor="middle" fill="#111">y</text>')
+    if x_min < 0 < x_max and y_min < 0 < y_max:
+        elements.append(f'<text x="{axis_x - 6:.1f}" y="{axis_y + 12:.1f}" font-size="11" font-style="italic" text-anchor="end" fill="#111">O</text>')
+
+    # 6. Curve Labels (rendered on top of curves and axes)
+    elements.extend(curve_labels)
+
+    # 7. Points, Projections, and Labels
     for pt in spec.points:
         px = to_svg_x(pt.x)
         py = to_svg_y(pt.y)
@@ -213,20 +275,24 @@ def render_function_plot_svg(spec: FunctionPlotSpec) -> str:
                 f'<line x1="{px:.1f}" y1="{py:.1f}" x2="{px:.1f}" y2="{axis_y:.1f}" '
                 f'stroke="#555" stroke-width="0.9" stroke-dasharray="2,2" />'
             )
-            x_label = pt.x_tick_label or f"{pt.x:g}"
-            elements.append(
-                f'<text x="{px:.1f}" y="{axis_y + 12:.1f}" font-size="10" text-anchor="middle" fill="#222">{escape(x_label)}</text>'
-            )
+            raw_x_label = pt.x_tick_label or f"{pt.x:g}"
+            x_label = format_svg_math_label(raw_x_label)
+            if abs(pt.x) > 1e-4:  # Avoid colliding with origin O
+                elements.append(
+                    f'<text x="{px:.1f}" y="{axis_y + 12:.1f}" font-size="10" stroke="white" stroke-width="2.0" paint-order="stroke fill" text-anchor="middle" fill="#222">{x_label}</text>'
+                )
 
         if pt.show_projection in ("y", "both"):
             elements.append(
                 f'<line x1="{px:.1f}" y1="{py:.1f}" x2="{axis_x:.1f}" y2="{py:.1f}" '
                 f'stroke="#555" stroke-width="0.9" stroke-dasharray="2,2" />'
             )
-            y_label = pt.y_tick_label or f"{pt.y:g}"
-            elements.append(
-                f'<text x="{axis_x - 5:.1f}" y="{py + 3:.1f}" font-size="10" text-anchor="end" fill="#222">{escape(y_label)}</text>'
-            )
+            raw_y_label = pt.y_tick_label or f"{pt.y:g}"
+            y_label = format_svg_math_label(raw_y_label)
+            if abs(pt.y) > 1e-4:  # Avoid colliding with origin O
+                elements.append(
+                    f'<text x="{axis_x - 5:.1f}" y="{py + 3:.1f}" font-size="10" stroke="white" stroke-width="2.0" paint-order="stroke fill" text-anchor="end" fill="#222">{y_label}</text>'
+                )
 
         # Point circle
         if pt.open_circle:
@@ -248,16 +314,19 @@ def render_function_plot_svg(spec: FunctionPlotSpec) -> str:
             elif pt.label_pos == "bottom":
                 offset_x, offset_y, anchor = 0.0, 12.0, "middle"
 
+            formatted_pt_label = format_svg_math_label(pt.label)
             elements.append(
                 f'<text x="{px + offset_x:.1f}" y="{py + offset_y:.1f}" font-size="10" '
-                f'text-anchor="{anchor}" fill="#111">{escape(pt.label)}</text>'
+                f'stroke="white" stroke-width="2.0" paint-order="stroke fill" '
+                f'text-anchor="{anchor}" fill="#111">{formatted_pt_label}</text>'
             )
 
     # Caption if present
     if spec.caption:
+        formatted_caption = format_svg_math_label(spec.caption)
         elements.append(
             f'<text x="{width / 2:.1f}" y="{height - 5:.1f}" font-size="9" text-anchor="middle" fill="#666">'
-            f'{escape(spec.caption)}</text>'
+            f'{formatted_caption}</text>'
         )
 
     elements.append("</svg>")

@@ -441,3 +441,75 @@ def markdown_to_typst(text: str) -> str:
             tokens.append(t)
 
     return "".join(tokens)
+
+
+SVG_SUPERSCRIPTS = {
+    "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+    "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+    "+": "⁺", "-": "⁻", "=": "⁼", "(": "⁽", ")": "⁾",
+    "n": "ⁿ", "i": "ⁱ", "x": "ˣ", "y": "ʸ", "k": "ᵏ", "m": "ᵐ"
+}
+
+SVG_SUBSCRIPTS = {
+    "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄",
+    "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉",
+    "+": "₊", "-": "₋", "=": "₌", "(": "₍", ")": "₎",
+    "a": "ₐ", "e": "ₑ", "o": "ₒ", "x": "ₓ", "n": "ₙ", "i": "ᵢ", "j": "ⱼ", "k": "ₖ"
+}
+
+SVG_GREEK_AND_SYMBOLS = [
+    (r"\^\s*\\circ", "°"),
+    (r"\\circ", "°"),
+    (r"\\theta", "θ"), (r"\\pi", "π"), (r"\\alpha", "α"), (r"\\beta", "β"),
+    (r"\\gamma", "γ"), (r"\\delta", "δ"), (r"\\epsilon", "ε"), (r"\\lambda", "λ"),
+    (r"\\mu", "μ"), (r"\\sigma", "σ"), (r"\\omega", "ω"), (r"\\Omega", "Ω"),
+    (r"\\Delta", "Δ"), (r"\\times", "×"), (r"\\div", "÷"), (r"\\pm", "±"),
+    (r"\\leq?", "≤"), (r"\\geq?", "≥"), (r"\\neq?", "≠"), (r"\\approx", "≈"),
+    (r"\\infty", "∞"), (r"\\prime", "′"), (r"'", "′"),
+    (r"\\vec\{([^{}]+)\}", r"\1⃗"),
+    (r"\\sqrt\{([^{}]+)\}", r"√(\1)"),
+    (r"\\frac\{1\}\{2\}", "½"),
+    (r"\\frac\{1\}\{3\}", "⅓"),
+    (r"\\frac\{2\}\{3\}", "⅔"),
+    (r"\\frac\{1\}\{4\}", "¼"),
+    (r"\\frac\{3\}\{4\}", "¾"),
+]
+
+
+def format_svg_math_label(text: str) -> str:
+    """
+    Converts LaTeX math expressions and ASCII math (e.g. 'y=-x^2+4x', '\\theta=30^\\circ', 'P(x_1, y_1)')
+    into beautiful, standard vector SVG typography using unicode math and tspan scripts.
+    """
+    if not text:
+        return ""
+    s = text.strip()
+    if s.startswith("$") and s.endswith("$") and len(s) >= 2:
+        s = s[1:-1].strip()
+
+    # Pre-escape XML special characters
+    s = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    for pat, rep in SVG_GREEK_AND_SYMBOLS:
+        s = re.sub(pat + r"(?![a-zA-Z])", rep, s)
+
+    # Convert ^(...) or ^{...} or ^char to superscripts
+    def repl_sup(m: re.Match) -> str:
+        content = m.group(1) or m.group(2)
+        if all(c in SVG_SUPERSCRIPTS for c in content):
+            return "".join(SVG_SUPERSCRIPTS[c] for c in content)
+        return f'<tspan dy="-3.5" font-size="70%">{content}</tspan><tspan dy="3.5">'
+
+    s = re.sub(r"\^\{([^}]+)\}|\^([0-9a-zA-Z+-])", repl_sup, s)
+
+    # Convert _{...} or _char to subscripts
+    def repl_sub(m: re.Match) -> str:
+        content = m.group(1) or m.group(2)
+        if all(c in SVG_SUBSCRIPTS for c in content):
+            return "".join(SVG_SUBSCRIPTS[c] for c in content)
+        return f'<tspan dy="2.5" font-size="70%">{content}</tspan><tspan dy="-2.5">'
+
+    s = re.sub(r"\_\{([^}]+)\}|\_([0-9a-zA-Z+-])", repl_sub, s)
+    s = re.sub(r"\\(?:mathrm|text)\{([^}]+)\}", r"\1", s)
+    s = s.replace(r"\,", " ").replace(r"\;", " ").replace(r"\quad", "   ")
+    return s
