@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  create-pdf-mcp:
+    build: .
+    container_name: create-pdf-mcp
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - PUBLIC_BASE_URL=http://localhost:8000
+      - STORAGE_MODE=auto
+      - LOCAL_STORAGE_DIR=/app/data/files
+      - LOCAL_FILE_TTL_HOURS=24
+      # Cloudflare R2 credentials (can be set in .env)
+      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID:-}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME:-exam-pdfs}
+      - R2_PUBLIC_DOMAIN=${R2_PUBLIC_DOMAIN:-}
+    volumes:
+      - ./data/files:/app/data/files
