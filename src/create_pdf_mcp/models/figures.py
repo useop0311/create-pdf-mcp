@@ -3,9 +3,49 @@ from pydantic import BaseModel, Field
 
 
 class FunctionCurve(BaseModel):
-    expr: str = Field(..., description="x에 대한 수학 수식 (예: 'x**3 - 3*x + 1', '2*sin(pi*x)', '1/(x-1)')")
+    expr: str = Field(
+        ...,
+        description=(
+            "수학 수식. 양함수(예: 'x**3 - 3*x + 1', '2*sin(pi*x)', 'sqrt(4 - x^2)'), "
+            "음함수 방정식(예: 'x^2 + y^2 = 4', 'x^2/4 - y^2/9 = 1', 'x^3 + y^3 - 3*x*y = 0'), "
+            "역함수(예: 'x = y^2 - 2*y'), 극방정식(예: 'r = 1 + cos(theta)') 모두 지원"
+        ),
+    )
     domain: tuple[float, float] | None = Field(None, description="개별 정의 구간 [x_min, x_max]")
-    label: str | None = Field(None, description="곡선 라벨 (예: 'y=f(x)')")
+    label: str | None = Field(None, description="곡선 라벨 (예: 'y=f(x)', 'x^2+y^2=4')")
+    style: Literal["solid", "dashed", "dotted"] = "solid"
+    color: str = "#111111"
+
+
+class ImplicitCurve(BaseModel):
+    expr: str = Field(
+        ...,
+        description="F(x, y) = 0 또는 '좌변 = 우변' 형태의 음함수 수식 (예: 'x^2 + y^2 = 4', 'x^2/9 + y^2/4 = 1', 'x^3 + y^3 - 3*x*y = 0')",
+    )
+    label: str | None = Field(None, description="음함수 곡선 라벨 (예: 'x^2+y^2=4')")
+    style: Literal["solid", "dashed", "dotted"] = "solid"
+    color: str = "#111111"
+
+
+class ParametricCurve(BaseModel):
+    x_expr: str = Field(..., description="매개변수 t에 대한 x(t) 수식 (예: '2*cos(t)', 't - sin(t)')")
+    y_expr: str = Field(..., description="매개변수 t에 대한 y(t) 수식 (예: '2*sin(t)', '1 - cos(t)')")
+    t_range: tuple[float | str, float | str] = Field(
+        (0.0, 6.283185307179586),
+        description="매개변수 t의 범위 [t_min, t_max] (예: (0, 6.2832) 또는 ('0', '2*pi'))",
+    )
+    label: str | None = Field(None, description="곡선 라벨")
+    style: Literal["solid", "dashed", "dotted"] = "solid"
+    color: str = "#111111"
+
+
+class PolarCurve(BaseModel):
+    r_expr: str = Field(..., description="극각 theta(또는 t)에 대한 r = f(theta) 수식 (예: '1 + cos(theta)', '2*sin(3*theta)')")
+    theta_range: tuple[float | str, float | str] = Field(
+        (0.0, 6.283185307179586),
+        description="극각 theta의 범위 [theta_min, theta_max] (예: (0, 6.2832) 또는 ('0', '2*pi'))",
+    )
+    label: str | None = Field(None, description="곡선 라벨")
     style: Literal["solid", "dashed", "dotted"] = "solid"
     color: str = "#111111"
 
@@ -34,12 +74,16 @@ class FunctionPlotSpec(BaseModel):
     type: Literal["function_plot"] = "function_plot"
     x_range: tuple[float, float] = Field((-4.0, 4.0), description="x축 표시 범위")
     y_range: tuple[float, float] = Field((-4.0, 4.0), description="y축 표시 범위")
-    functions: list[FunctionCurve] = Field(default_factory=list)
+    functions: list[FunctionCurve] = Field(default_factory=list, description="양함수/음함수/극방정식 곡선 리스트")
+    implicit_curves: list[ImplicitCurve] = Field(default_factory=list, description="음함수 F(x, y) = 0 곡선 리스트 (Marching Squares)")
+    parametric_curves: list[ParametricCurve] = Field(default_factory=list, description="매개변수 (x(t), y(t)) 곡선 리스트")
+    polar_curves: list[PolarCurve] = Field(default_factory=list, description="극좌표 r = f(theta) 곡선 리스트")
     points: list[PlotPoint] = Field(default_factory=list)
     shaded_areas: list[ShadedArea] = Field(default_factory=list)
     asymptotes_x: list[float] = Field(default_factory=list, description="수직 점근선 x=c 리스트")
     asymptotes_y: list[float] = Field(default_factory=list, description="수평 점근선 y=c 리스트")
     show_grid: bool = False
+    equal_aspect: bool = Field(False, description="x축과 y축의 1:1 등비율(원/기하 왜곡 방지) 적용 여부")
     width_cm: float = 6.5
     caption: str | None = None
 

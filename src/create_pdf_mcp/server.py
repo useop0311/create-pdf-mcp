@@ -112,7 +112,12 @@ def get_exam_schema_guide() -> str:
 - `bogi`: List of items like `["ㄱ. $f(0) = 0$", "ㄴ. $f'(1) > 0$", "ㄷ. 방정식 $f(x)=0$은 오직 하나의 실근을 갖는다."]`.
 - `choices`: List of 5 choices. Numbering ①~⑤ is automatically formatted.
 - `figures`:
-  - `function_plot`: Specify `functions` with `expr`, `x_range`, `y_range`, `points`, `shaded_areas`.
+  - `function_plot`:
+    - `functions`: Explicit (`y = x^3 - 3x`), Implicit (`x^2 + y^2 = 9`), Inverse (`x = y^2 - 2`), or Polar (`r = 1 + cos(theta)`).
+    - `implicit_curves`: Dedicated 2D Marching Squares implicit curves `F(x, y) = 0` (e.g. `x^2/4 - y^2/2 = 1`, `x^3 + y^3 - 3*x*y = 0`).
+    - `parametric_curves`: Parametric `(x(t), y(t))` over `t_range` (e.g. Cycloid, Astroid).
+    - `polar_curves`: Polar `r = f(theta)` over `theta_range` (e.g. Cardioid, Rose curve).
+    - `equal_aspect`: Set `True` for 1:1 geometric aspect ratio (circles, ellipses, polar curves).
   - `geometry_physics`: Specify `points`, `segments`, `circles`, `angles`, `physics_objects`.
   - `raw_svg`: Custom raw SVG string.
 """

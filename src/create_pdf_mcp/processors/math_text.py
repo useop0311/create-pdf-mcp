@@ -498,7 +498,7 @@ def format_svg_math_label(text: str) -> str:
         content = m.group(1) or m.group(2)
         if all(c in SVG_SUPERSCRIPTS for c in content):
             return "".join(SVG_SUPERSCRIPTS[c] for c in content)
-        return f'<tspan dy="-3.5" font-size="70%">{content}</tspan><tspan dy="3.5">'
+        return f'<tspan baseline-shift="super" font-size="72%">{content}</tspan>'
 
     s = re.sub(r"\^\{([^}]+)\}|\^([0-9a-zA-Z+-])", repl_sup, s)
 
@@ -507,7 +507,7 @@ def format_svg_math_label(text: str) -> str:
         content = m.group(1) or m.group(2)
         if all(c in SVG_SUBSCRIPTS for c in content):
             return "".join(SVG_SUBSCRIPTS[c] for c in content)
-        return f'<tspan dy="2.5" font-size="70%">{content}</tspan><tspan dy="-2.5">'
+        return f'<tspan baseline-shift="sub" font-size="72%">{content}</tspan>'
 
     s = re.sub(r"\_\{([^}]+)\}|\_([0-9a-zA-Z+-])", repl_sub, s)
     s = re.sub(r"\\(?:mathrm|text)\{([^}]+)\}", r"\1", s)

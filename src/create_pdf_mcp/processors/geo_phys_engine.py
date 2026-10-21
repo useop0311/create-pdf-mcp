@@ -64,7 +64,7 @@ def render_geometry_physics_svg(spec: GeometryPhysicsSpec) -> str:
     elements.append(
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width:.1f} {height:.1f}" '
         f'width="{spec.width_cm}cm" height="{(spec.width_cm * height / width):.2f}cm" '
-        f'style="font-family: \'AppleMyungjo\', \'Apple SD Gothic Neo\', \'Noto Serif CJK KR\', \'Noto Serif KR\', \'New Computer Modern\', serif;">'
+        f'style="font-family: \'New Computer Modern\', \'Times New Roman\', \'AppleMyungjo\', \'Noto Serif CJK KR\', \'Noto Serif KR\', \'Apple SD Gothic Neo\', serif;">'
     )
     elements.append("""
     <defs>

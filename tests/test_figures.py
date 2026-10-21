@@ -2,6 +2,9 @@ import pytest
 from create_pdf_mcp.models.figures import (
     FunctionPlotSpec,
     FunctionCurve,
+    ImplicitCurve,
+    ParametricCurve,
+    PolarCurve,
     PlotPoint,
     ShadedArea,
     GeometryPhysicsSpec,
@@ -117,3 +120,66 @@ def test_raw_svg_sanitization():
     assert "<script" not in svg
     assert "viewBox" in svg
     assert "<circle" in svg
+
+
+def test_implicit_parametric_and_polar_curves():
+    import re
+    spec = FunctionPlotSpec(
+        x_range=(-4.0, 4.0),
+        y_range=(-4.0, 4.0),
+        equal_aspect=True,
+        functions=[
+            # Auto-detected implicit equation inside FunctionCurve
+            FunctionCurve(expr="x^2 + y^2 = 9", label="x^2+y^2=9"),
+            # Auto-detected inverse explicit equation x = g(y)
+            FunctionCurve(expr="x = y^2 - 2", label="x=y^2-2", style="dashed"),
+        ],
+        implicit_curves=[
+            # Folium of Descartes via Marching Squares
+            ImplicitCurve(expr="x^3 + y^3 - 3*x*y = 0", label="x^3+y^3=3xy", color="#b91c1c"),
+        ],
+        parametric_curves=[
+            # Astroid curve
+            ParametricCurve(
+                x_expr="2*cos(t)^3",
+                y_expr="2*sin(t)^3",
+                t_range=("0", "2*pi"),
+                label="Astroid",
+                color="#1d4ed8",
+            ),
+        ],
+        polar_curves=[
+            # Cardioid curve
+            PolarCurve(
+                r_expr="1 + cos(theta)",
+                theta_range=("0", "2*pi"),
+                label="r=1+\\cos\\theta",
+                color="#15803d",
+            ),
+        ],
+    )
+    svg = render_figure_to_svg(spec)
+    paths = re.findall(r'<path d="([^"]+)" fill="none"[^>]*>', svg)
+    # All 5 curves should produce non-empty vector paths
+    assert len(paths) >= 5
+    # Verify math label conversion (x^2 -> x², \theta -> θ)
+    assert "x²+y²=9" in svg
+    assert "x³+y³=3xy" in svg
+    assert "r=1+cosθ" in svg or "θ" in svg
+
+
+def test_domain_boundary_bisection_and_discontinuity():
+    import re
+    spec = FunctionPlotSpec(
+        x_range=(-3.0, 3.0),
+        y_range=(-3.0, 3.0),
+        functions=[
+            FunctionCurve(expr="sqrt(4 - x^2)", label="y=\\sqrt{4-x^2}"),
+            FunctionCurve(expr="1 / (x - 1)", label="y=1/(x-1)", style="dashed"),
+        ],
+    )
+    svg = render_figure_to_svg(spec)
+    paths = re.findall(r'<path d="([^"]+)" fill="none"[^>]*>', svg)
+    # Semicircle (1 path) + hyperbola 1/(x-1) (split into 2 disconnected branches across x=1)
+    assert len(paths) == 3
+
