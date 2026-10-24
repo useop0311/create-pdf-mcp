@@ -51,14 +51,15 @@
     v(0.3em)
     align(center)[
       #block(
-        width: 95%,
+        width: 96%,
         stroke: 0.6pt + rgb("#444"),
         radius: 0pt,
         inset: (x: 10pt, y: 7pt),
         align(left)[
-          #set par(leading: 0.6em)
-          #for item in items [
-            #to_markup(item) \
+          #set par(leading: 0.65em, spacing: 0.45em, justify: true)
+          #for (idx, item) in items.enumerate() [
+            #if idx > 0 [ #v(0.2em) ]
+            #to_markup(item)
           ]
         ]
       )
@@ -67,12 +68,116 @@
   }
 }
 
-#let bogi_box(items) = {
+#let given_box_render(g_data) = {
+  if g_data != none {
+    v(0.35em)
+    let g_title = g_data.at("title", default: none)
+    if g_title != none and g_title != "" {
+      align(center)[
+        #block(
+          width: 98%,
+          stroke: 0.6pt + rgb("#333"),
+          radius: 0pt,
+          fill: rgb("#fafbfc"),
+          inset: (x: 9pt, top: 11pt, bottom: 8pt),
+          outset: 0pt,
+          [
+            #place(top + center, dy: -16pt)[
+              #box(fill: white, inset: (x: 6pt, y: 0pt))[
+                #text(size: 8.8pt, weight: "bold", font: KOREAN_FONTS)[#to_markup(g_title)]
+              ]
+            ]
+            #align(left)[
+              #set par(leading: 0.65em, spacing: 0.5em, justify: true)
+              #set text(size: 9.4pt)
+              #to_markup(g_data.content)
+            ]
+          ]
+        )
+      ]
+    } else {
+      align(center)[
+        #block(
+          width: 98%,
+          stroke: 0.6pt + rgb("#333"),
+          radius: 0pt,
+          fill: rgb("#fafbfc"),
+          inset: (x: 9pt, y: 7.5pt),
+          align(left)[
+            #set par(leading: 0.65em, spacing: 0.5em, justify: true)
+            #set text(size: 9.4pt)
+            #to_markup(g_data.content)
+          ]
+        )
+      ]
+    }
+    v(0.3em)
+  }
+}
+
+#let passage_box(p_data, breakable_box: true) = {
+  if p_data != none {
+    let header = p_data.at("header", default: none)
+    if header != none and header != "" {
+      block(sticky: true, width: 100%, above: 0.6em, below: 0.35em)[
+        #text(size: 9.8pt, weight: "bold", fill: rgb("#111"), font: KOREAN_FONTS)[#to_markup(header)]
+      ]
+    } else {
+      v(0.3em)
+    }
+
+    block(
+      width: 100%,
+      breakable: breakable_box,
+      stroke: 0.65pt + rgb("#222"),
+      radius: 0pt,
+      inset: (x: 9pt, y: 8pt),
+      fill: white,
+      [
+        #let p_title = p_data.at("title", default: none)
+        #if p_title != none and p_title != "" [
+          #align(center)[
+            #block(below: 0.5em)[
+              #text(size: 9.8pt, weight: "bold", font: KOREAN_FONTS)[#to_markup(p_title)]
+            ]
+          ]
+        ]
+        #align(left)[
+          #set par(leading: 0.68em, spacing: 0.55em, justify: true)
+          #set text(size: 9.4pt)
+          #to_markup(p_data.content)
+        ]
+        #let p_source = p_data.at("source", default: none)
+        #if p_source != none and p_source != "" [
+          #v(0.35em)
+          #align(right)[
+            #text(size: 8.5pt, fill: rgb("#333"), font: KOREAN_FONTS)[— #to_markup(p_source)]
+          ]
+        ]
+        #let p_notes = p_data.at("footnotes", default: ())
+        #if p_notes != none and p_notes.len() > 0 [
+          #v(0.35em)
+          #align(right)[
+            #set par(leading: 0.45em, spacing: 0.25em)
+            #for (f_idx, fn) in p_notes.enumerate() [
+              #if f_idx > 0 [ \ ]
+              #text(size: 8pt, fill: rgb("#444"), font: KOREAN_FONTS)[#to_markup(fn)]
+            ]
+          ]
+        ]
+      ]
+    )
+    v(0.45em)
+  }
+}
+
+#let bogi_box(items, title: none) = {
   if items != none and items.len() > 0 {
+    let b_title = if title != none and title != "" { title } else { "\\<보 기\\>" }
     v(0.4em)
     align(center)[
       #block(
-        width: 95%,
+        width: 96%,
         stroke: 0.6pt + rgb("#222"),
         radius: 0pt,
         inset: (x: 10pt, top: 12pt, bottom: 8pt),
@@ -80,13 +185,14 @@
         [
           #place(top + center, dy: -17pt)[
             #box(fill: white, inset: (x: 6pt, y: 0pt))[
-              #text(size: 9pt, weight: "bold")[\<보 기\>]
+              #text(size: 9pt, weight: "bold", font: KOREAN_FONTS)[#to_markup(b_title)]
             ]
           ]
           #align(left)[
-            #set par(leading: 0.6em)
-            #for item in items [
-              #to_markup(item) \
+            #set par(leading: 0.65em, spacing: 0.45em, justify: true)
+            #for (idx, item) in items.enumerate() [
+              #if idx > 0 [ #v(0.2em) ]
+              #to_markup(item)
             ]
           ]
         ]
@@ -98,16 +204,18 @@
 
 #let choices_grid(choices) = {
   if choices != none and choices.len() > 0 {
-    v(0.4em)
+    v(0.35em)
     let circled = ("①", "②", "③", "④", "⑤")
     
-    // Measure lengths to decide 5-col, 3+2 col, or 1-col
+    // Measure visible character length (clusters) to decide 5-col, 3+2 col, or 1-col
     let max_len = 0
     for c in choices {
-      if c.len() > max_len { max_len = c.len() }
+      let cleaned = c.replace("#underline[", "").replace("]", "")
+      let clen = cleaned.clusters().len()
+      if clen > max_len { max_len = clen }
     }
 
-    if choices.len() == 5 and max_len <= 10 {
+    if choices.len() == 5 and max_len <= 8 {
       // 1 row of 5 columns
       grid(
         columns: (1fr, 1fr, 1fr, 1fr, 1fr),
@@ -116,11 +224,12 @@
           #text(weight: "bold")[#circled.at(i)] #to_markup(c)
         ])
       )
-    } else if choices.len() == 5 and max_len <= 22 {
+    } else if choices.len() == 5 and max_len <= 16 {
       // 2 rows: 3 columns then 2 columns
       grid(
         columns: (1fr, 1fr, 1fr),
-        row-gutter: 0.6em,
+        row-gutter: 0.55em,
+        column-gutter: 4pt,
         ..choices.slice(0, 3).enumerate().map(((i, c)) => [
           #text(weight: "bold")[#circled.at(i)] #to_markup(c)
         ]),
@@ -130,15 +239,19 @@
         []
       )
     } else {
-      // 1 column list
-      stack(
-        spacing: 0.5em,
-        ..choices.enumerate().map(((i, c)) => [
-          #text(weight: "bold")[#circled.at(i)] #to_markup(c)
-        ])
+      // 1 column list with hanging alignment via 2-column grid (number, text)
+      grid(
+        columns: (auto, 1fr),
+        column-gutter: 0.4em,
+        row-gutter: 0.48em,
+        align: (left + top, left + top),
+        ..choices.enumerate().map(((i, c)) => (
+          [#text(weight: "bold")[#circled.at(calc.min(i, 4))]],
+          [#set par(leading: 0.6em, justify: true); #to_markup(c)]
+        )).flatten()
       )
     }
-    v(0.3em)
+    v(0.25em)
   }
 }
 

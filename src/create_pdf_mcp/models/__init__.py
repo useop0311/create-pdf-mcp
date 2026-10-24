@@ -15,7 +15,7 @@ from .figures import (
     RawSvgSpec,
     ShadedArea,
 )
-from .exam import ExamPDFRequest, ExamPDFResponse, ProblemItem
+from .exam import ExamPDFRequest, ExamPDFResponse, PassageGroup, ProblemItem
 
 __all__ = [
     "FigureSpec",
@@ -35,5 +35,6 @@ __all__ = [
     "ShadedArea",
     "ExamPDFRequest",
     "ExamPDFResponse",
+    "PassageGroup",
     "ProblemItem",
 ]

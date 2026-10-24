@@ -19,17 +19,25 @@ from .typst_engine import generate_typst_document, compile_typst_to_pdf, get_pdf
 mcp = MCPServer(
     name="CreatePDFMCP",
     instructions=(
-        "CreatePDFMCP is a specialized MCP server for generating high-quality Korean Math and Physics "
-        "exam/worksheet PDFs (수능 2단 칼럼, 패드 1페이지 1문항 필기용 모눈/백지, 1단 워크북) "
-        "with 3-tier vector figures (SymPy function plots, declarative geometry/physics diagrams, and raw SVGs). "
-        "Always structure problems with Markdown and LaTeX math ($...$, $$...$$), conditions (가/나), and <보기> (ㄱ/ㄴ/ㄷ)."
+        "CreatePDFMCP is a specialized MCP server for generating high-quality Korean CSAT/mock-exam/worksheet PDFs "
+        "across all subjects — including Korean (국어 영역: 독서/문학/화작/언매), English (영어 영역: 단독 독해/빈칸 추론/순서/문장 삽입/장문 독해), "
+        "Math (수학 영역), and Physics/Science (물리/과학 탐구) "
+        "in 3 layouts (수능 2단 칼럼 exam_2col, 패드 1페이지 1문항 pad_1p1q, 1단 워크북 workbook). "
+        "Supports single-problem passages (`passage`), multi-problem shared passage groups (`passage_groups` or `passage_range`), "
+        "given-sentence/ordering boxes (`given_box`), footnotes (`passage_footnotes`), source citations (`passage_source`), "
+        "underlines (`<u>...</u>`), blank lines (`______`), LaTeX math (`$...$`), conditions (가/나), <보기> (ㄱ/ㄴ/ㄷ 또는 문단), "
+        "and 3-tier vector figures."
     ),
 )
 
 
 @mcp.tool(
     name="create_exam_pdf",
-    description="Generate a Korean Math or Physics exam/worksheet PDF and return accessible download URL and QR code."
+    description=(
+        "Generate a Korean, English, Math, or Science/Physics exam/worksheet PDF "
+        "(supporting reading passages, shared passage sets [1~3], given-sentence boxes, math formulas, and vector figures) "
+        "and return accessible download URL and QR code."
+    ),
 )
 async def create_exam_pdf(request: ExamPDFRequest) -> ExamPDFResponse:
     """
@@ -99,25 +107,36 @@ async def preview_figure(figure: FigureSpec) -> dict:
 
 @mcp.resource("schema://exam_guide", name="exam_guide")
 def get_exam_schema_guide() -> str:
-    """Returns guide and examples for authoring Korean exam questions."""
+    """Returns guide and examples for authoring Korean, English, Math, and Science exam questions."""
     return """
-# Korean Math & Physics Exam Authoring Guide
+# Korean, English, Math & Physics Exam Authoring Guide
 
-## 1. Math Formula Syntax
+## 1. Reading Passages (국어·영어 지문 및 세트 문항)
+- **Single-Problem Passage (영어 독해 18~40번, 국어 단독 지문)**:
+  - Set `passage` on `ProblemItem` (string or list of paragraph strings).
+  - By default (`passage_position="auto"`), it renders inside a bordered box right below the question `stem`.
+  - Optional: `passage_title` (title inside box), `passage_source` (e.g. `"박지원, 「호질」"`), `passage_footnotes` (e.g. `["* resilient: 회복력 있는", "** paradigm: 패러다임"]`).
+- **Shared / Grouped Passage (국어 `[1~4]` 독서·문학 세트, 영어 `[41~42]` 장문 독해)**:
+  - **Method A (`passage_groups` on `ExamPDFRequest`)**:
+    Add a `PassageGroup` with `problem_numbers=[1, 2, 3]` (or `start_number=1, end_number=3`), `header="[1~3] 다음 글을 읽고 물음에 답하시오."`, `passage="..."`, `source="..."`, `footnotes=[...]`.
+  - **Method B (`passage_range` on the first `ProblemItem`)**:
+    Set `passage="..."` and `passage_range="1~3"` (or `passage_range="[41~42] 다음 글을 읽고, 물음에 답하시오."`) on the first problem of the set.
+- **Given Sentence / Ordering Intro Box (영어 문장 삽입·글의 순서, 국어 제시문)**:
+  - Set `given_box` (and optional `given_box_title`, e.g. `"주어진 문장"` or `"주어진 글"`) on `ProblemItem`. It renders in a distinct box above the main `passage`.
+- **Underlines & Blanks (밑줄 및 빈칸 추론)**:
+  - Wrap underlined words/sentences with `<u>...</u>` or `__...__` (e.g. `㉠ <u>그의 사상</u>`, `(a) <u>wake-up call</u>`).
+  - Write 3 or more underscores `______` for blank-filling questions (빈칸 추론); it automatically renders as a crisp horizontal blank line.
+
+## 2. Math Formula Syntax
 - Use standard LaTeX math: `$f(x) = x^3 - 3x + 1$`, `$\\int_0^1 f(x)dx$`, `$\\frac{a}{b}$`.
 - For prime notation, use `$f'(x)$` or `$f^{\\prime}(x)$`.
 
-## 2. Korean Exam Components
+## 3. Common Exam Components
 - `conditions`: List of condition strings like `["(가) 모든 실수 $x$에 대하여 $f(x) \\ge 0$", "(나) $f(1) = 2$"]`
-- `bogi`: List of items like `["ㄱ. $f(0) = 0$", "ㄴ. $f'(1) > 0$", "ㄷ. 방정식 $f(x)=0$은 오직 하나의 실근을 갖는다."]`.
+- `bogi`: List of items (`["ㄱ. ...", "ㄴ. ...", "ㄷ. ..."]`) OR a Korean `<보기>` reading paragraph string. Optional `bogi_title` (default `"<보 기>"`).
 - `choices`: List of 5 choices. Numbering ①~⑤ is automatically formatted.
 - `figures`:
-  - `function_plot`:
-    - `functions`: Explicit (`y = x^3 - 3x`), Implicit (`x^2 + y^2 = 9`), Inverse (`x = y^2 - 2`), or Polar (`r = 1 + cos(theta)`).
-    - `implicit_curves`: Dedicated 2D Marching Squares implicit curves `F(x, y) = 0` (e.g. `x^2/4 - y^2/2 = 1`, `x^3 + y^3 - 3*x*y = 0`).
-    - `parametric_curves`: Parametric `(x(t), y(t))` over `t_range` (e.g. Cycloid, Astroid).
-    - `polar_curves`: Polar `r = f(theta)` over `theta_range` (e.g. Cardioid, Rose curve).
-    - `equal_aspect`: Set `True` for 1:1 geometric aspect ratio (circles, ellipses, polar curves).
+  - `function_plot`: Explicit, Implicit, Parametric, or Polar curves with shaded areas and points.
   - `geometry_physics`: Specify `points`, `segments`, `circles`, `angles`, `physics_objects`.
   - `raw_svg`: Custom raw SVG string.
 """

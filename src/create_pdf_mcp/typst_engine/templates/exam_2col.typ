@@ -93,12 +93,17 @@
   exam_header(title, subtitle, subject_badge)
   v(0.5em)
 
-  // 2-Column body with center vertical divider
+  // 2-Column body
   columns(2, gutter: 18pt)[
     #for prob in problems [
+      // Shared / pre-stem passage (breakable across columns for long Korean/English reading passages)
+      #if prob.at("pre_passage", default: none) != none [
+        #passage_box(prob.pre_passage, breakable_box: true)
+      ]
+
       #block(
         width: 100%,
-        breakable: false,
+        breakable: prob.at("is_breakable", default: false),
         inset: (bottom: eval(prob.at("solving_space", default: "1.2cm")))
       )[
         // Question number + badges
@@ -106,6 +111,14 @@
         #topic_badge(prob.at("topic_tag", default: none))
         #h(0.3em)#to_markup(prob.stem)
         #points_badge(prob.at("points", default: none))
+
+        // Optional Given Box (주어진 글 / 문장 삽입 / 제시문)
+        #given_box_render(prob.at("given_box", default: none))
+
+        // Optional Inline Passage (단독 문항 지문, e.g. 영어 독해 18~40번)
+        #if prob.at("inline_passage", default: none) != none [
+          #passage_box(prob.inline_passage, breakable_box: prob.at("is_breakable", default: false))
+        ]
 
         // Optional Conditions Box
         #conditions_box(prob.at("conditions", default: ()))
@@ -118,7 +131,7 @@
         ]
 
         // Bogi Box (<보 기>)
-        #bogi_box(prob.at("bogi", default: ()))
+        #bogi_box(prob.at("bogi", default: ()), title: prob.at("bogi_title", default: none))
 
         // Choices or Subjective answer box
         #render_answer_area(prob)

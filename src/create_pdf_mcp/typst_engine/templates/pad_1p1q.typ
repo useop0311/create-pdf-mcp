@@ -73,7 +73,17 @@
 
     // Question content area (Rest of the page is naturally open for handwriting/solving)
     #block(width: 100%)[
+      #if prob.at("pad_pre_passage", default: none) != none [
+        #passage_box(prob.pad_pre_passage, breakable_box: true)
+      ]
+
       #to_markup(prob.stem)
+
+      #given_box_render(prob.at("given_box", default: none))
+
+      #if prob.at("inline_passage", default: none) != none [
+        #passage_box(prob.inline_passage, breakable_box: true)
+      ]
 
       #conditions_box(prob.at("conditions", default: ()))
 
@@ -83,7 +93,7 @@
         #v(0.4em)
       ]
 
-      #bogi_box(prob.at("bogi", default: ()))
+      #bogi_box(prob.at("bogi", default: ()), title: prob.at("bogi_title", default: none))
 
       // Choices or Subjective answer box
       #render_answer_area(prob)

@@ -64,15 +64,25 @@
   v(1em)
 
   for prob in problems [
+    #if prob.at("pre_passage", default: none) != none [
+      #passage_box(prob.pre_passage, breakable_box: true)
+    ]
+
     #block(
       width: 100%,
-      breakable: false,
+      breakable: prob.at("is_breakable", default: false),
       inset: (bottom: eval(prob.at("solving_space", default: "2.0cm")))
     )[
       #text(size: 12pt, weight: "bold")[#prob.number.]
       #topic_badge(prob.at("topic_tag", default: none))
       #h(0.3em)#to_markup(prob.stem)
       #points_badge(prob.at("points", default: none))
+
+      #given_box_render(prob.at("given_box", default: none))
+
+      #if prob.at("inline_passage", default: none) != none [
+        #passage_box(prob.inline_passage, breakable_box: prob.at("is_breakable", default: false))
+      ]
 
       #conditions_box(prob.at("conditions", default: ()))
 
@@ -82,7 +92,7 @@
         #v(0.3em)
       ]
 
-      #bogi_box(prob.at("bogi", default: ()))
+      #bogi_box(prob.at("bogi", default: ()), title: prob.at("bogi_title", default: none))
 
       // Choices or Subjective answer box
       #render_answer_area(prob)

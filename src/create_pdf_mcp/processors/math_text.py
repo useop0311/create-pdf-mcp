@@ -395,13 +395,80 @@ def latex_math_to_typst(math_str: str) -> str:
     return s.strip()
 
 
+_UL_START = "\uE001"
+_UL_END = "\uE002"
+_BOLD_START = "\uE003"
+_BOLD_END = "\uE004"
+_ESCAPED_DOLLAR = "\uE005"
+
+
+def _format_plain_text_segment(part: str) -> str:
+    """
+    Escapes Typst markup control characters in plain text while converting
+    Markdown bold (**...**), underline (__...__), blank lines (____), and newlines.
+    """
+    t = part
+
+    # 1. Convert 3 or more consecutive underscores into an inline exam blank line
+    def _repl_blank(m: re.Match) -> str:
+        count = len(m.group(0))
+        width_em = max(3.0, min(10.0, count * 0.55))
+        return f"\uE006{width_em:.1f}\uE007"
+
+    t = re.sub(r"_{3,}", _repl_blank, t)
+
+    # 2. Convert Markdown double-underscore __text__ into underline placeholder
+    t = re.sub(r"__([^_\n]+?)__", lambda m: f"{_UL_START}{m.group(1)}{_UL_END}", t)
+
+    # 3. Convert Markdown bold **text** into bold placeholder
+    t = re.sub(r"\*\*(.+?)\*\*", lambda m: f"{_BOLD_START}{m.group(1)}{_BOLD_END}", t)
+
+    # 4. Escape Typst specials in remaining plain text
+    t = t.replace("\\", "")  # remove leftover backslashes in plain text
+    t = t.replace("#", r"\#")
+    t = t.replace("@", r"\@")
+    t = t.replace("$", r"\$")
+    t = t.replace("<", r"\<")
+    t = t.replace("~", r"\~")
+    t = t.replace("*", r"\*")
+    t = t.replace("_", r"\_")
+    t = t.replace("//", r"\/")
+    t = re.sub(r"(?m)^(\s*)=", r"\1\\=", t)
+
+    # 5. Restore formatting placeholders
+    t = t.replace(_BOLD_START, "*").replace(_BOLD_END, "*")
+    t = t.replace(_UL_START, "#underline[").replace(_UL_END, "]")
+    t = re.sub(
+        r"\uE006(\d+\.\d+)\uE007",
+        r'#box(width: \1em, stroke: (bottom: 0.6pt + rgb("#222")))[#h(\1em)]',
+        t,
+    )
+
+    # 6. Preserve newlines as Typst paragraph breaks
+    t = re.sub(r"\n{2,}", "\n\n#v(0.2em)\n\n", t)
+    t = re.sub(r"(?<!\n)\n(?!\n)", "\n\n", t)
+    return t
+
+
 def markdown_to_typst(text: str) -> str:
     r"""
-    Convert markdown with embedded LaTeX math ($...$, $$...$$, \[...\], \(...\)) into Typst content syntax.
+    Convert markdown with embedded LaTeX math ($...$, $$...$$, \[...\], \(...\)),
+    HTML underlines (<u>...</u>), and exam blanks (______) into Typst content syntax.
     Safely escapes Typst control characters in text while preserving math blocks.
     """
     if not text:
         return ""
+
+    # Preserve explicitly escaped dollar signs \$
+    text = text.replace(r"\$", _ESCAPED_DOLLAR)
+
+    # Convert HTML <u>...</u> tags into underline placeholders before escaping '<' and '>'
+    text = re.sub(
+        r"<u>(.*?)</u>",
+        lambda m: f"{_UL_START}{m.group(1)}{_UL_END}",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
 
     # Normalize LaTeX display/inline math: \[ ... \] -> $$ ... $$, \( ... \) -> $ ... $
     text = re.sub(r"\\\[(.*?)\\\]", r"$$\1$$", text, flags=re.DOTALL)
@@ -410,8 +477,8 @@ def markdown_to_typst(text: str) -> str:
     tokens = []
     # Pattern to match:
     # 1. Block math: $$ ... $$
-    # 2. Inline math: $ ... $
-    pattern = re.compile(r"(\$\$.*?\$\$|\$.*?\$)", re.DOTALL)
+    # 2. Inline math: $ ... $ (closing $ not immediately followed by ASCII digit/letter so currency like '$20 and $10' stays text)
+    pattern = re.compile(r"(\$\$.*?\$\$|\$[^$\n]+?\$(?![0-9a-zA-Z]))", re.DOTALL)
     parts = pattern.split(text)
 
     for part in parts:
@@ -421,24 +488,18 @@ def markdown_to_typst(text: str) -> str:
             math_content = part[2:-2].strip()
             converted = latex_math_to_typst(math_content)
             tokens.append(f"\n$ {converted} $\n")
-        elif part.startswith("$") and part.endswith("$") and len(part) >= 2:
+        elif (
+            part.startswith("$")
+            and part.endswith("$")
+            and len(part) >= 2
+            and "\n" not in part
+        ):
             math_content = part[1:-1].strip()
             converted = latex_math_to_typst(math_content)
             tokens.append(f"${converted}$")
         else:
-            # Regular text: escape Typst specials and convert Markdown formatting
-            t = part
-            # Escape Typst specials
-            t = t.replace("\\", "")  # remove leftover backslashes in plain text
-            t = t.replace("#", r"\#")
-            t = t.replace("@", r"\@")
-            t = t.replace("<", r"\<")
-            # Markdown bold: **text** -> *text* in Typst
-            t = re.sub(r"\*\*(.+?)\*\*", r"*\1*", t)
-            # Preserve newlines
-            t = t.replace("\n\n", "\n#v(0.3em)\n")
-            t = t.replace("\n", " \n")
-            tokens.append(t)
+            part = part.replace(_ESCAPED_DOLLAR, "$")
+            tokens.append(_format_plain_text_segment(part))
 
     return "".join(tokens)
 
