@@ -1,6 +1,41 @@
 from typing import Any, Literal
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from .figures import FigureSpec
+
+
+class PassageGroup(BaseModel):
+    problem_numbers: list[int] | None = Field(
+        None,
+        description="이 공통 지문에 연결된 문항 번호 리스트 (예: [1, 2, 3] 또는 [41, 42])",
+    )
+    start_number: int | None = Field(
+        None,
+        description="공통 지문이 시작되는 첫 문항 번호 (problem_numbers 미지정 시 사용, 예: 1)",
+    )
+    end_number: int | None = Field(
+        None,
+        description="공통 지문이 끝나는 마지막 문항 번호 (예: 3)",
+    )
+    header: str | None = Field(
+        None,
+        description="공통 지문 상단 안내문 (미지정 시 '[1~3] 다음 글을 읽고 물음에 답하시오.' 자동 생성)",
+    )
+    title: str | None = Field(
+        None,
+        description="지문 박스 내부 상단 제목 (있을 경우)",
+    )
+    passage: str | list[str] = Field(
+        ...,
+        description="공통 지문 본문 텍스트 (문자열 또는 단락별 리스트. 복합 지문 '(가)...', '(나)...', 밑줄 <u>...</u>, 빈칸 ______ 지원)",
+    )
+    source: str | None = Field(
+        None,
+        description="지문 하단 우측 출전/출처 표기 (예: '박지원, 「호질」', '정약용, 「목민심서」')",
+    )
+    footnotes: list[str] | str | None = Field(
+        None,
+        description="지문 하단 어휘 주석/각주 (예: ['* resilient: 회복력 있는', '** paradigm: 패러다임'])",
+    )
 
 
 class SubProblemItem(BaseModel):
@@ -14,7 +49,7 @@ class SubProblemItem(BaseModel):
         ...,
         description="소문항 문제 본문 (Markdown, 빈칸 표현 ____ 또는 [빈칸] 또는 (      ), 및 $...$, $$...$$ LaTeX 수식 지원)",
     )
-    passage: str | None = Field(
+    passage: str | list[str] | None = Field(
         None,
         description="소문항 전용 지문/제시문 박스 (빈칸 문장, 대화문, 제시문 등)",
     )
@@ -25,6 +60,30 @@ class SubProblemItem(BaseModel):
     bogi: list[str] = Field(
         default_factory=list,
         description="소문항 <보기> 박스 항목 리스트",
+    )
+    bogi_title: str | None = Field(
+        None,
+        description="소문항 <보기> 박스 상단 제목 (기본값: '<보기>')",
+    )
+    given_box: str | list[str] | None = Field(
+        None,
+        description="소문항 주어진 글/문장 박스",
+    )
+    given_box_title: str | None = Field(
+        None,
+        description="소문항 주어진 글 상단 제목",
+    )
+    passage_title: str | None = Field(
+        None,
+        description="소문항 지문 제목",
+    )
+    passage_source: str | None = Field(
+        None,
+        description="소문항 지문 출처",
+    )
+    passage_footnotes: list[str] | str | None = Field(
+        None,
+        description="소문항 지문 어휘 풀이/각주",
     )
     figures: list[FigureSpec] = Field(default_factory=list, description="소문항에 포함할 그래프/도형 리스트")
     choices: list[str] = Field(
@@ -72,11 +131,16 @@ class ProblemItem(BaseModel):
         None,
         description="문항 번호 또는 라벨 (예: 1, 6, '6번', '[4~8번]'). 미지정 시 1부터 자동 부여",
     )
+    points: int | None = Field(None, description="배점 (예: 2, 3, 4 -> '[3점]'으로 표시)")
+    topic_tag: str | None = Field(
+        None,
+        description="단원/유형 태그 (예: '독서 - 인문/철학', '영어 - 빈칸 추론', '수학Ⅱ - 미분법')",
+    )
     group_header: str | None = Field(
         None,
         description="문항군 공통 지시문 헤더 (예: '[4~8번] 빈칸에 들어갈 알맞은 문장을 고르시오.', '[6~7] 다음 글을 읽고 물음에 답하시오.'). 연속된 문항에 동일한 값을 지정해도 첫 문항 상단에 한 번만 출력됨",
     )
-    group_passage: str | None = Field(
+    group_passage: str | list[str] | None = Field(
         None,
         description="문항군(예: [4~8번]) 전체가 공유하는 공통 지문/제시문 박스",
     )
@@ -92,15 +156,41 @@ class ProblemItem(BaseModel):
         default_factory=list,
         description="문항군 전체가 공유하는 공통 그래프/도형 리스트",
     )
-    points: int | None = Field(None, description="배점 (예: 2, 3, 4 -> '[4점]'으로 표시)")
-    topic_tag: str | None = Field(None, description="단원/유형 태그 (예: '수학Ⅱ - 미분법', '물리학Ⅰ - 역학')")
     stem: str = Field(
         ...,
-        description="문제 본문 (Markdown, 빈칸 표현 ____ 또는 [빈칸] 또는 (      ), 및 $...$, $$...$$ LaTeX 수식 지원. 새끼문제 사용 시 '다음 물음에 답하시오.' 등 공통 발문 입력)",
+        description="문제 본문/발문 (Markdown, <u>밑줄</u>, 빈칸 표현 ____ 또는 [빈칸] 또는 (      ), 및 $...$, $$...$$ LaTeX 수식 지원. 새끼문제 사용 시 '다음 물음에 답하시오.' 등 공통 발문 입력)",
     )
-    passage: str | None = Field(
+    passage: str | list[str] | None = Field(
         None,
-        description="개별 문항의 지문/제시문 박스 (예: 빈칸이 포함된 제시문, 독해 지문, 실험 과정 등)",
+        description="문항 지문 본문 (영어 독해 단독 지문, 국어 단독/공통 지문 등. 문자열 또는 단락 리스트 입력 가능)",
+    )
+    passage_title: str | None = Field(
+        None,
+        description="지문 상단 안내문 또는 지문 제목 (예: '[1~3] 다음 글을 읽고 물음에 답하시오.' 또는 지문 제목)",
+    )
+    passage_source: str | None = Field(
+        None,
+        description="지문 하단 우측 출전/출처 표기 (예: '윤동주, 「쉽게 씌어진 시」')",
+    )
+    passage_footnotes: list[str] | str | None = Field(
+        None,
+        description="지문 하단 어휘 주석/각주 (예: ['* ephemeral: 덧없는', '** ubiquitous: 어디에나 있는'])",
+    )
+    passage_position: Literal["auto", "after_stem", "before_stem"] = Field(
+        "auto",
+        description="지문 배치 위치: 'after_stem'(발문 아래에 배치 - 영어 단독 독해 문항 기본), 'before_stem'(문항 번호 위에 배치 - 국어/영어 세트 문항 기본), 'auto'(passage_range 유무에 따라 자동 판별)",
+    )
+    passage_range: str | None = Field(
+        None,
+        description="공통 지문(세트 문항)일 때 묶이는 문항 범위 또는 안내 헤더 (예: '1~3', '[41~42] 다음 글을 읽고, 물음에 답하시오.'). 지정 시 문항 위에 공통 지문으로 배치됨",
+    )
+    given_box: str | list[str] | None = Field(
+        None,
+        description="영어/국어 '주어진 글(문장 삽입 / 글의 순서 도입부)' 또는 <제시문> 박스 텍스트 (발문 아래, 본 지문 위에 별도 박스로 표시)",
+    )
+    given_box_title: str | None = Field(
+        None,
+        description="given_box 상단 라벨 (예: '주어진 글', '주어진 문장', '제시문'. 미지정 시 라벨 없는 박스)",
     )
     conditions: list[str] = Field(
         default_factory=list,
@@ -108,7 +198,11 @@ class ProblemItem(BaseModel):
     )
     bogi: list[str] = Field(
         default_factory=list,
-        description="<보기> 박스 항목 리스트 (예: ['ㄱ. $f(0)=1$', 'ㄴ. $f^{\\prime}(1)>0$', 'ㄷ. 방정식 $f(x)=0$의 실근은 2개이다.'])",
+        description="<보기> 박스 항목 리스트 또는 단락 텍스트 (예: ['ㄱ. $f(0)=1$', 'ㄴ. $f^{\\prime}(1)>0$'] 또는 국어 <보기> 지문)",
+    )
+    bogi_title: str | None = Field(
+        None,
+        description="<보기> 박스의 커스텀 제목 (기본값: '<보 기>', 예: '<조 건>', '<자 료>')",
     )
     figures: list[FigureSpec] = Field(default_factory=list, description="문제에 포함할 그래프/도형 리스트")
     choices: list[str] = Field(
@@ -121,7 +215,7 @@ class ProblemItem(BaseModel):
     )
     subjective_type: Literal["auto", "short_answer", "descriptive", "none"] = Field(
         "auto",
-        description="주관식 문항 유형: 'auto'(choices 및 sub_problems 유무에 따라 자동 판별), 'short_answer'(단답형 숫자/수식 기입란), 'descriptive'(서술형 풀이 박스), 'none'(별도 답란 박스 없음)",
+        description="주관식 문항 유형: 'auto'(choices 및 sub_problems 유무에 따라 자동 판별), 'short_answer'(단답형 숫자/수식/단어 기입란), 'descriptive'(서술형 풀이 박스), 'none'(별도 답란 박스 없음)",
     )
     subjective_box_height: float | Literal["auto", "small", "medium", "large"] = Field(
         "auto",
@@ -140,7 +234,7 @@ class ProblemItem(BaseModel):
         default_factory=list, description="해설지에만 들어갈 보조선 도형/그래프"
     )
     solving_space_cm: float | None = Field(
-        None, description="개별 문항 하단 추가 풀이 여백 높이(cm). 미지정 시 레이아웃 기본값 사용"
+        None, description="개별 문항 하단 추가 풀이 여백 높이(cm). 미지정 시 과목/지문 유무에 따라 자동 설정"
     )
 
     @model_validator(mode="before")
@@ -161,11 +255,27 @@ class ProblemItem(BaseModel):
                 data["stem"] = data.pop("question")
         return data
 
+    @field_validator("conditions", "bogi", mode="before")
+    @classmethod
+    def _normalize_str_or_list(cls, v: Any) -> list[str]:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            stripped = v.strip()
+            return [stripped] if stripped else []
+        return v
+
 
 class ExamPDFRequest(BaseModel):
-    title: str = Field("수학 영역", description="시험지 메인 제목 (예: '2027학년도 대학수학능력시험 모의평가 문제지', '물리학Ⅰ 실전 연습')")
-    subtitle: str | None = Field("제 2 교시", description="상단 교시/부제목 표시")
-    subject_badge: str | None = Field(None, description="우측 상단 과목형 배지 (예: '미적분', '물리학Ⅰ', '홀수형')")
+    title: str = Field(
+        "수학 영역",
+        description="시험지 메인 제목 (예: '2027학년도 대학수학능력시험 문제지', '국어 영역', '영어 영역', '수학 영역')",
+    )
+    subtitle: str | None = Field("제 2 교시", description="상단 교시/부제목 표시 (예: '제 1 교시', '제 2 교시', '제 3 교시')")
+    subject_badge: str | None = Field(
+        None,
+        description="우측 상단 과목형/유형 배지 (예: '홀수형', '국어', '영어', '미적분', '물리학Ⅰ')",
+    )
     footer_text: str | None = Field(
         None,
         description="페이지 최하단 좌측에 들어갈 학교/기관명 또는 제작자 문구 (예: '대구일과학고등학교', '제작: 송우섭')",
@@ -180,15 +290,19 @@ class ExamPDFRequest(BaseModel):
     )
     problems_per_page: int | None = Field(
         None,
-        description="exam_2col 모드에서 한 페이지 최대 문항 수 (기본값 4: 칼럼당 2문항 배치 후 하단 여백 확보)",
+        description="exam_2col 모드에서 한 페이지 최대 문항 수 (선택 사항)",
     )
     pad_note_style: Literal["blank", "grid", "dotted", "lined", "split_2col"] = Field(
         "grid",
-        description="pad_1p1q 모드일 때 하단 70% 필기 영역의 배경 스타일",
+        description="pad_1p1q 모드일 때 하단 필기 영역의 배경 스타일",
     )
     answer_sheet_mode: Literal["append", "separate", "none"] = Field(
         "append",
         description="append: 같은 PDF 뒷부분에 빠른정답+해설 합본 / separate: 문제지·해설지 별도 PDF 2개 생성 / none: 문제지만 생성",
+    )
+    passage_groups: list[PassageGroup] = Field(
+        default_factory=list,
+        description="공통 지문(세트 문항, 예: 국어 [1~4], 영어 장문 [41~42]) 리스트. 개별 문항의 passage 및 passage_range 필드로도 지정 가능",
     )
     problems: list[ProblemItem] = Field(..., min_length=1)
 

@@ -56,6 +56,10 @@
   for (i, prob) in problems.enumerate() [
     #if i > 0 [ #pagebreak() ]
 
+    #if prob.at("pad_pre_passage", default: none) != none [
+      #passage_box(prob.pad_pre_passage, breakable_box: true)
+    ]
+
     #group_header_box(prob.at("pad_group_header", default: prob.at("group_header", default: none)))
     #passage_box(prob.at("pad_group_passage", default: prob.at("group_passage", default: none)))
     #conditions_box(prob.at("group_conditions", default: ()))
@@ -86,7 +90,15 @@
       #block(width: 100%)[
         #to_markup(prob.stem)
 
-        #passage_box(prob.at("passage", default: none))
+        #given_box_render(prob.at("given_box", default: none))
+
+        #if prob.at("inline_passage", default: none) != none [
+          #passage_box(prob.inline_passage, breakable_box: true)
+        ]
+        #if prob.at("passage", default: none) != none and prob.at("inline_passage", default: none) == none [
+          #passage_box(prob.passage, breakable_box: true)
+        ]
+
         #conditions_box(prob.at("conditions", default: ()))
 
         #for fig in prob.at("figures_svg", default: ()) [
@@ -95,7 +107,7 @@
           #v(0.4em)
         ]
 
-        #bogi_box(prob.at("bogi", default: ()))
+        #bogi_box(prob.at("bogi", default: ()), title: prob.at("bogi_title", default: none))
 
         #let subs = prob.at("sub_problems", default: ())
         #if subs.len() > 0 [

@@ -93,7 +93,7 @@
   exam_header(title, subtitle, subject_badge)
   v(0.5em)
 
-  // 2-Column body with center vertical divider
+  // 2-Column body
   columns(2, gutter: 18pt)[
     #for prob in problems [
       #render_problem_item(prob, num_size: 11.5pt, default_solving_space: "1.2cm")

@@ -323,9 +323,6 @@ def latex_math_to_typst(math_str: str) -> str:
     s = re.sub(r"\\langle(?![a-zA-Z])", "chevron.l ", s)
     s = re.sub(r"\\rangle(?![a-zA-Z])", "chevron.r ", s)
 
-    # 7. Overline and underline (supporting nested uppercase points like \overline{\mathrm{AB}})
-    s = _replace_overline_underline(s)
-
     # Vector arrows, dots, accents
     s = re.sub(r"\\vec\{([^{}]+)\}", r"arrow(\1)", s)
     s = re.sub(r"\\bar\{([^{}]+)\}", r"overline(\1)", s)
@@ -495,14 +492,138 @@ def latex_math_to_typst(math_str: str) -> str:
     return s.strip()
 
 
+_UL_START = "\uE001"
+_UL_END = "\uE002"
+_BOLD_START = "\uE003"
+_BOLD_END = "\uE004"
+_ESCAPED_DOLLAR = "\uE005"
+
+
+def _format_plain_text_segment(part: str, has_inline_subquestions: bool = False) -> str:
+    """
+    Escapes Typst markup control characters in plain text while converting
+    Markdown bold (**...**), underline (__...__), blank lines (____), [빈칸],
+    parenthesized spaces, and newlines.
+    """
+    t = part
+    txt_placeholders: list[str] = []
+
+    def _add_txt_ph(val: str) -> str:
+        idx = len(txt_placeholders)
+        txt_placeholders.append(val)
+        return f"\x00TXTPH{idx}\x00"
+
+    # If inline sub-questions "(1) ... (2) ..." are present on the same line, break lines before (1), (2), ...
+    if has_inline_subquestions:
+        t = re.sub(r"(?<=[^\n])(?<![0-9a-zA-Z])\s+(\([1-9]\)\s+)", r"\n\1", t)
+        t = re.sub(r"(?<=[.?!:])(\([1-9]\)\s+)", r"\n\1", t)
+
+    # 1. [빈칸: 라벨] or [빈칸] / (빈칸)
+    def _repl_labeled_blank(m: re.Match) -> str:
+        lbl = m.group(1).strip().replace("#", r"\#").replace("@", r"\@").replace("<", r"\<").replace("_", r"\_")
+        return _add_txt_ph(
+            f'#box(stroke: 0.6pt + rgb("#333"), inset: (x: 6pt, y: 2pt), baseline: 20%, radius: 1.5pt)[{lbl}]'
+        )
+
+    t = re.sub(r"\[\s*빈칸\s*:\s*([^\]]+?)\s*\]", _repl_labeled_blank, t)
+    t = re.sub(
+        r"\[\s*빈칸\s*\]|\(\s*빈칸\s*\)",
+        lambda _: _add_txt_ph(
+            '#box(width: 3.5em, height: 1.05em, baseline: 18%, stroke: 0.6pt + rgb("#333"), radius: 1.5pt)[]'
+        ),
+        t,
+    )
+
+    # 2. Markdown double-underscore __text__ into underline placeholder before matching raw underscores
+    t = re.sub(r"__([^_\n]+?)__", lambda m: f"{_UL_START}{m.group(1)}{_UL_END}", t)
+
+    # 3. Underscore blanks: 2 or more consecutive underscores (e.g. ___, ____, ______)
+    def _repl_underscore_blank(m: re.Match) -> str:
+        count = len(m.group(0))
+        width_em = max(3.0, min(10.0, count * 0.55))
+        return _add_txt_ph(
+            f'#box(width: {width_em:.1f}em, height: 0.8em, baseline: 12%, stroke: (bottom: 0.6pt + rgb("#222")))[#h({width_em:.1f}em)]'
+        )
+
+    t = re.sub(r"_{2,}", _repl_underscore_blank, t)
+
+    # 4. Parentheses/brackets with multiple spaces: (      ) or [      ]
+    def _repl_paren_blank(m: re.Match) -> str:
+        w_em = max(2.0, min(len(m.group(1)) * 0.5, 8.0))
+        return _add_txt_ph(f"(#h({w_em:.1f}em))")
+
+    def _repl_bracket_blank(m: re.Match) -> str:
+        w_em = max(2.0, min(len(m.group(1)) * 0.5, 8.0))
+        return _add_txt_ph(f"[#h({w_em:.1f}em)]")
+
+    t = re.sub(r"\(([ \t]{2,})\)", _repl_paren_blank, t)
+    t = re.sub(r"\[([ \t]{2,})\]", _repl_bracket_blank, t)
+
+    # 5. Parentheses/brackets with padded blank labels: (   가   ) or [   (가)   ]
+    def _repl_padded_paren_label(m: re.Match) -> str:
+        lbl = m.group(1).strip()
+        return _add_txt_ph(f"(#h(1.0em){lbl}#h(1.0em))")
+
+    def _repl_padded_bracket_label(m: re.Match) -> str:
+        lbl = m.group(1).strip()
+        return _add_txt_ph(f"[#h(1.0em){lbl}#h(1.0em)]")
+
+    t = re.sub(r"\([ \t]{2,}(\(?[가-하A-Zㄱ-ㅎ0-9]+\)?)[ \t]{2,}\)", _repl_padded_paren_label, t)
+    t = re.sub(r"\[[ \t]{2,}(\(?[가-하A-Zㄱ-ㅎ0-9]+\)?)[ \t]{2,}\]", _repl_padded_bracket_label, t)
+
+    # 6. Convert Markdown bold **text** into bold placeholder
+    t = re.sub(r"\*\*(.+?)\*\*", lambda m: f"{_BOLD_START}{m.group(1)}{_BOLD_END}", t)
+
+    # 7. Escape Typst specials in remaining plain text
+    t = t.replace("\\", "")  # remove leftover backslashes in plain text
+    t = t.replace("#", r"\#")
+    t = t.replace("@", r"\@")
+    t = t.replace("$", r"\$")
+    t = t.replace("<", r"\<")
+    t = t.replace("~", r"\~")
+    t = t.replace("*", r"\*")
+    t = t.replace("_", r"\_")
+    t = t.replace("//", r"\/")
+    t = re.sub(r"(?m)^(\s*)=", r"\1\\=", t)
+
+    # 8. Restore formatting placeholders
+    t = t.replace(_BOLD_START, "*").replace(_BOLD_END, "*")
+    t = t.replace(_UL_START, "#underline[").replace(_UL_END, "]")
+
+    # Bold sub-question markers at start of lines when inline sub-questions exist
+    if has_inline_subquestions:
+        t = re.sub(r"(^|\n)(\([1-9]\))(\s+)", r"\1*\2*\3", t)
+
+    # Preserve newlines
+    t = re.sub(r"\n{2,}", "\n\n#v(0.25em)\n\n", t)
+    t = re.sub(r"(?<!\n)\n(?!\n)", " \n", t)
+
+    # Restore blank placeholders
+    for idx, ph_val in enumerate(txt_placeholders):
+        t = t.replace(f"\x00TXTPH{idx}\x00", ph_val)
+
+    return t
+
+
 def markdown_to_typst(text: str) -> str:
     r"""
-    Convert markdown with embedded LaTeX math ($...$, $$...$$, \[...\], \(...\)) into Typst content syntax.
-    Safely escapes Typst control characters in text while preserving math blocks,
-    and renders blank notations (____, [빈칸], [빈칸: (가)], (      ), [      ]) and inline sub-questions.
+    Convert markdown with embedded LaTeX math ($...$, $$...$$, \[...\], \(...\)),
+    HTML underlines (<u>...</u>), and exam blanks (______, [빈칸], etc.) into Typst content syntax.
+    Safely escapes Typst control characters in text while preserving math blocks.
     """
     if not text:
         return ""
+
+    # Preserve explicitly escaped dollar signs \$
+    text = text.replace(r"\$", _ESCAPED_DOLLAR)
+
+    # Convert HTML <u>...</u> tags into underline placeholders before escaping '<' and '>'
+    text = re.sub(
+        r"<u>(.*?)</u>",
+        lambda m: f"{_UL_START}{m.group(1)}{_UL_END}",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
 
     # Normalize LaTeX display/inline math: \[ ... \] -> $$ ... $$, \( ... \) -> $ ... $
     text = re.sub(r"\\\[(.*?)\\\]", r"$$\1$$", text, flags=re.DOTALL)
@@ -511,8 +632,8 @@ def markdown_to_typst(text: str) -> str:
     tokens = []
     # Pattern to match:
     # 1. Block math: $$ ... $$
-    # 2. Inline math: $ ... $
-    pattern = re.compile(r"(\$\$.*?\$\$|\$.*?\$)", re.DOTALL)
+    # 2. Inline math: $ ... $ (closing $ not immediately followed by ASCII digit/letter so currency like '$20 and $10' stays text)
+    pattern = re.compile(r"(\$\$.*?\$\$|\$[^$\n]+?\$(?![0-9a-zA-Z]))", re.DOTALL)
     parts = pattern.split(text)
 
     # Check if plain text parts contain inline sub-question sequences like "(1) ... (2) ..."
@@ -531,94 +652,18 @@ def markdown_to_typst(text: str) -> str:
             math_content = part[2:-2].strip()
             converted = latex_math_to_typst(math_content)
             tokens.append(f"\n$ {converted} $\n")
-        elif part.startswith("$") and part.endswith("$") and len(part) >= 2:
+        elif (
+            part.startswith("$")
+            and part.endswith("$")
+            and len(part) >= 2
+            and "\n" not in part
+        ):
             math_content = part[1:-1].strip()
             converted = latex_math_to_typst(math_content)
             tokens.append(f"${converted}$")
         else:
-            # Regular text: handle blank expressions and inline sub-questions, then escape Typst specials
-            t = part
-            txt_placeholders: list[str] = []
-
-            def _add_txt_ph(val: str) -> str:
-                idx = len(txt_placeholders)
-                txt_placeholders.append(val)
-                return f"\x00TXTPH{idx}\x00"
-
-            # If inline sub-questions "(1) ... (2) ..." are present on the same line, break lines before (1), (2), ...
-            if has_inline_subquestions:
-                t = re.sub(r"(?<=[^\n])(?<![0-9a-zA-Z])\s+(\([1-9]\)\s+)", r"\n\1", t)
-                t = re.sub(r"(?<=[.?!:])(\([1-9]\)\s+)", r"\n\1", t)
-
-            # 1. [빈칸: 라벨] or [빈칸] / (빈칸)
-            def _repl_labeled_blank(m: re.Match) -> str:
-                lbl = m.group(1).strip().replace("#", r"\#").replace("@", r"\@").replace("<", r"\<").replace("_", r"\_")
-                return _add_txt_ph(
-                    f'#box(stroke: 0.6pt + rgb("#333"), inset: (x: 6pt, y: 2pt), baseline: 20%, radius: 1.5pt)[{lbl}]'
-                )
-
-            t = re.sub(r"\[\s*빈칸\s*:\s*([^\]]+?)\s*\]", _repl_labeled_blank, t)
-            t = re.sub(
-                r"\[\s*빈칸\s*\]|\(\s*빈칸\s*\)",
-                lambda _: _add_txt_ph(
-                    '#box(width: 3.5em, height: 1.05em, baseline: 18%, stroke: 0.6pt + rgb("#333"), radius: 1.5pt)[]'
-                ),
-                t,
-            )
-
-            # 2. Underscore blanks: 2 or more consecutive underscores (e.g. ___, _____)
-            def _repl_underscore_blank(m: re.Match) -> str:
-                w_em = max(2.2, min(len(m.group(0)) * 0.55, 8.0))
-                return _add_txt_ph(
-                    f'#box(width: {w_em:.1f}em, height: 0.8em, baseline: 12%, stroke: (bottom: 0.6pt + rgb("#222")))[]'
-                )
-
-            t = re.sub(r"_{2,}", _repl_underscore_blank, t)
-
-            # 3. Parentheses/brackets with multiple spaces: (      ) or [      ]
-            def _repl_paren_blank(m: re.Match) -> str:
-                w_em = max(2.0, min(len(m.group(1)) * 0.5, 8.0))
-                return _add_txt_ph(f"(#h({w_em:.1f}em))")
-
-            def _repl_bracket_blank(m: re.Match) -> str:
-                w_em = max(2.0, min(len(m.group(1)) * 0.5, 8.0))
-                return _add_txt_ph(f"[#h({w_em:.1f}em)]")
-
-            t = re.sub(r"\(([ \t]{2,})\)", _repl_paren_blank, t)
-            t = re.sub(r"\[([ \t]{2,})\]", _repl_bracket_blank, t)
-
-            # 4. Parentheses/brackets with padded blank labels: (   가   ) or [   (가)   ]
-            def _repl_padded_paren_label(m: re.Match) -> str:
-                lbl = m.group(1).strip()
-                return _add_txt_ph(f"(#h(1.0em){lbl}#h(1.0em))")
-
-            def _repl_padded_bracket_label(m: re.Match) -> str:
-                lbl = m.group(1).strip()
-                return _add_txt_ph(f"[#h(1.0em){lbl}#h(1.0em)]")
-
-            t = re.sub(r"\([ \t]{2,}(\(?[가-하A-Zㄱ-ㅎ0-9]+\)?)[ \t]{2,}\)", _repl_padded_paren_label, t)
-            t = re.sub(r"\[[ \t]{2,}(\(?[가-하A-Zㄱ-ㅎ0-9]+\)?)[ \t]{2,}\]", _repl_padded_bracket_label, t)
-
-            # Escape Typst specials
-            t = t.replace("\\", "")  # remove leftover backslashes in plain text
-            t = t.replace("#", r"\#")
-            t = t.replace("@", r"\@")
-            t = t.replace("<", r"\<")
-            t = t.replace("_", r"\_")
-            # Markdown bold: **text** -> *text* in Typst
-            t = re.sub(r"\*\*(.+?)\*\*", r"*\1*", t)
-            # Bold sub-question markers at start of lines when inline sub-questions exist
-            if has_inline_subquestions:
-                t = re.sub(r"(^|\n)(\([1-9]\))(\s+)", r"\1*\2*\3", t)
-            # Preserve newlines
-            t = t.replace("\n\n", "\n#v(0.3em)\n")
-            t = t.replace("\n", " \n")
-
-            # Restore blank placeholders
-            for idx, ph_val in enumerate(txt_placeholders):
-                t = t.replace(f"\x00TXTPH{idx}\x00", ph_val)
-
-            tokens.append(t)
+            part = part.replace(_ESCAPED_DOLLAR, "$")
+            tokens.append(_format_plain_text_segment(part, has_inline_subquestions=has_inline_subquestions))
 
     return "".join(tokens)
 
