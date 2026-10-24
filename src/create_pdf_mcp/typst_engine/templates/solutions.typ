@@ -50,14 +50,15 @@
   v(0.5em)
 
   // Render Answer Table in chunks of up to 10 per row
+  let graded_problems = problems.filter(p => not p.at("is_header_only", default: false))
   let chunk_size = 10
-  let total = problems.len()
-  let num_chunks = calc.ceil(total / chunk_size)
+  let total = graded_problems.len()
+  let num_chunks = if total > 0 { calc.ceil(total / chunk_size) } else { 0 }
 
   for c_idx in range(num_chunks) {
     let start_idx = c_idx * chunk_size
     let end_idx = calc.min(start_idx + chunk_size, total)
-    let chunk = problems.slice(start_idx, end_idx)
+    let chunk = graded_problems.slice(start_idx, end_idx)
 
     align(center)[
       #table(
@@ -66,7 +67,7 @@
         fill: (col, row) => if row == 0 { rgb("#f1f5f9") } else { none },
         stroke: 0.5pt + rgb("#cbd5e1"),
         [#text(weight: "bold")[문항]], ..chunk.map(p => [#p.number]),
-        [#text(weight: "bold")[정답]], ..chunk.map(p => [#text(weight: "bold", fill: rgb("#b91c1c"))[#to_markup(p.answer)]])
+        [#text(weight: "bold")[정답]], ..chunk.map(p => [#text(weight: "bold", fill: rgb("#b91c1c"))[#to_markup(p.at("quick_answer", default: p.answer))]])
       )
     ]
     v(0.3em)
@@ -82,7 +83,7 @@
   ]
   v(0.5em)
 
-  for prob in problems [
+  for prob in graded_problems [
     #block(
       width: 100%,
       stroke: (left: 2pt + rgb("#3b82f6")),
@@ -92,23 +93,55 @@
         columns: (1fr, auto),
         align: (left + horizon, right + horizon),
         [
-          #text(size: 11pt, weight: "bold", font: KOREAN_FONTS)[#prob.number 번 문항 해설]
-          #h(0.5em)#text(weight: "bold", fill: rgb("#b91c1c"))[[정답: #to_markup(prob.answer)]]
+          #text(size: 11pt, weight: "bold", font: KOREAN_FONTS)[#format_sol_heading(prob.number)]
+          #if prob.at("answer", default: "") != "" [
+            #h(0.5em)#text(weight: "bold", fill: rgb("#b91c1c"))[[정답: #to_markup(prob.answer)]]
+          ]
         ],
         []
       )
       #v(0.4em)
 
-      #if prob.at("solution", default: none) != none [
+      #let has_parent_sol = prob.at("solution", default: none) != none and prob.at("solution", default: "") != ""
+      #let sub_probs = prob.at("sub_problems", default: ())
+      #let has_sub_sol = sub_probs.any(s => (s.at("solution", default: none) != none and s.at("solution", default: "") != "") or (s.at("answer", default: none) != none and s.at("answer", default: "") != ""))
+
+      #if has_parent_sol [
         #to_markup(prob.solution)
-      ] else [
-        #text(fill: rgb("#888"))[(상세 해설이 제공되지 않았습니다.)]
       ]
 
       #for sfig in prob.at("solution_figures_svg", default: ()) [
         #v(0.4em)
         #align(center)[#image(bytes(sfig), format: "svg")]
         #v(0.3em)
+      ]
+
+      #if sub_probs.len() > 0 [
+        #if has_parent_sol [ #v(0.4em) ]
+        #for sub in sub_probs [
+          #block(
+            width: 100%,
+            inset: (left: 6pt, y: 3pt),
+            [
+              #text(weight: "bold")[#sub.label]
+              #if sub.at("answer", default: none) != none and sub.at("answer", default: "") != "" [
+                #h(0.3em)#text(weight: "bold", fill: rgb("#b91c1c"))[[정답: #to_markup(sub.answer)]]
+              ]
+              #if sub.at("solution", default: none) != none and sub.at("solution", default: "") != "" [
+                #h(0.3em)#to_markup(sub.solution)
+              ]
+              #for sfig in sub.at("solution_figures_svg", default: ()) [
+                #v(0.3em)
+                #align(center)[#image(bytes(sfig), format: "svg")]
+                #v(0.2em)
+              ]
+            ]
+          )
+        ]
+      ]
+
+      #if not has_parent_sol and not has_sub_sol [
+        #text(fill: rgb("#888"))[(상세 해설이 제공되지 않았습니다.)]
       ]
     ]
     #v(0.6em)

@@ -96,33 +96,7 @@
   // 2-Column body with center vertical divider
   columns(2, gutter: 18pt)[
     #for prob in problems [
-      #block(
-        width: 100%,
-        breakable: false,
-        inset: (bottom: eval(prob.at("solving_space", default: "1.2cm")))
-      )[
-        // Question number + badges
-        #text(size: 11.5pt, weight: "bold")[#prob.number.]
-        #topic_badge(prob.at("topic_tag", default: none))
-        #h(0.3em)#to_markup(prob.stem)
-        #points_badge(prob.at("points", default: none))
-
-        // Optional Conditions Box
-        #conditions_box(prob.at("conditions", default: ()))
-
-        // Figures
-        #for fig in prob.at("figures_svg", default: ()) [
-          #v(0.3em)
-          #align(center)[#image(bytes(fig), format: "svg")]
-          #v(0.3em)
-        ]
-
-        // Bogi Box (<보 기>)
-        #bogi_box(prob.at("bogi", default: ()))
-
-        // Choices or Subjective answer box
-        #render_answer_area(prob)
-      ]
+      #render_problem_item(prob, num_size: 11.5pt, default_solving_space: "1.2cm")
     ]
   ]
 }

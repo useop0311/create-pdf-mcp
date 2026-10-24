@@ -156,6 +156,40 @@ docker compose up -d --build
       "subjective_label": "풀이 과정 및 정답",
       "answer": "$a = g \\sin \\theta$",
       "solution": "알짜힘 $F = mg \\sin \\theta = ma$에 의해 $a = g \\sin \\theta$이다."
+    },
+    {
+      "number": 4,
+      "group_header": "[4~5번] 빈칸에 들어갈 알맞은 문장을 고르시오.",
+      "points": 3,
+      "stem": "다음 문장의 빈칸 _____ 에 들어갈 알맞은 말을 고르시오.",
+      "passage": "미분가능한 함수 $f(x)$는 모든 실수에서 [빈칸: (가)] 이다.",
+      "choices": ["연속", "불연속", "증가함수", "상수함수", "주기함수"],
+      "answer": "①",
+      "solution": "미분가능한 함수는 항상 연속이다."
+    },
+    {
+      "number": 6,
+      "points": 6,
+      "topic_tag": "수학Ⅱ - 새끼문제(소문항)",
+      "stem": "함수 $f(x) = x^3 - 3x^2 + 2$에 대하여 다음 물음에 답하시오.",
+      "sub_problems": [
+        {
+          "number": "(1)",
+          "points": 3,
+          "stem": "도함수 $f'(x)$를 구하고 극값을 구하시오.",
+          "subjective_type": "short_answer",
+          "answer": "극댓값 $2$, 극솟값 $-2$",
+          "solution": "$f'(x) = 3x(x-2) = 0$에서 $x=0, 2$이다."
+        },
+        {
+          "number": "(2)",
+          "points": 3,
+          "stem": "방정식 $f(x) = k$가 서로 다른 세 실근을 갖도록 하는 정수 $k$의 개수는?",
+          "choices": ["$1$", "$2$", "$3$", "$4$", "$5$"],
+          "answer": "③",
+          "solution": "$-2 < k < 2$인 정수는 $-1, 0, 1$로 3개이다."
+        }
+      ]
     }
   ]
 }

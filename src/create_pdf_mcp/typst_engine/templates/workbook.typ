@@ -64,28 +64,6 @@
   v(1em)
 
   for prob in problems [
-    #block(
-      width: 100%,
-      breakable: false,
-      inset: (bottom: eval(prob.at("solving_space", default: "2.0cm")))
-    )[
-      #text(size: 12pt, weight: "bold")[#prob.number.]
-      #topic_badge(prob.at("topic_tag", default: none))
-      #h(0.3em)#to_markup(prob.stem)
-      #points_badge(prob.at("points", default: none))
-
-      #conditions_box(prob.at("conditions", default: ()))
-
-      #for fig in prob.at("figures_svg", default: ()) [
-        #v(0.3em)
-        #align(center)[#image(bytes(fig), format: "svg")]
-        #v(0.3em)
-      ]
-
-      #bogi_box(prob.at("bogi", default: ()))
-
-      // Choices or Subjective answer box
-      #render_answer_area(prob)
-    ]
+    #render_problem_item(prob, num_size: 12pt, default_solving_space: "2.0cm")
   ]
 }

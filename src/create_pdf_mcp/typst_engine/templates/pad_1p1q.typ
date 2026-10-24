@@ -56,37 +56,57 @@
   for (i, prob) in problems.enumerate() [
     #if i > 0 [ #pagebreak() ]
 
-    // Top Question Meta
-    #grid(
-      columns: (1fr, auto),
-      align: (left + horizon, right + horizon),
-      [
-        #text(size: 14pt, weight: "bold", font: KOREAN_FONTS)[문항 #prob.number]
-        #h(0.4em)#topic_badge(prob.at("topic_tag", default: none))
-        #points_badge(prob.at("points", default: none))
-      ],
-      []
-    )
-    #v(3pt)
-    #line(length: 100%, stroke: 0.8pt + rgb("#cbd5e1"))
-    #v(0.5em)
+    #group_header_box(prob.at("pad_group_header", default: prob.at("group_header", default: none)))
+    #passage_box(prob.at("pad_group_passage", default: prob.at("group_passage", default: none)))
+    #conditions_box(prob.at("group_conditions", default: ()))
+    #for gfig in prob.at("group_figures_svg", default: ()) [
+      #v(0.3em)
+      #align(center)[#image(bytes(gfig), format: "svg")]
+      #v(0.3em)
+    ]
+    #bogi_box(prob.at("group_bogi", default: ()))
 
-    // Question content area (Rest of the page is naturally open for handwriting/solving)
-    #block(width: 100%)[
-      #to_markup(prob.stem)
+    #if not prob.at("is_header_only", default: false) [
+      // Top Question Meta
+      #grid(
+        columns: (1fr, auto),
+        align: (left + horizon, right + horizon),
+        [
+          #text(size: 14pt, weight: "bold", font: KOREAN_FONTS)[문항 #prob.number]
+          #h(0.4em)#topic_badge(prob.at("topic_tag", default: none))
+          #points_badge(prob.at("points", default: none))
+        ],
+        []
+      )
+      #v(3pt)
+      #line(length: 100%, stroke: 0.8pt + rgb("#cbd5e1"))
+      #v(0.5em)
 
-      #conditions_box(prob.at("conditions", default: ()))
+      // Question content area (Rest of the page is naturally open for handwriting/solving)
+      #block(width: 100%)[
+        #to_markup(prob.stem)
 
-      #for fig in prob.at("figures_svg", default: ()) [
-        #v(0.4em)
-        #align(center)[#image(bytes(fig), format: "svg")]
-        #v(0.4em)
+        #passage_box(prob.at("passage", default: none))
+        #conditions_box(prob.at("conditions", default: ()))
+
+        #for fig in prob.at("figures_svg", default: ()) [
+          #v(0.4em)
+          #align(center)[#image(bytes(fig), format: "svg")]
+          #v(0.4em)
+        ]
+
+        #bogi_box(prob.at("bogi", default: ()))
+
+        #let subs = prob.at("sub_problems", default: ())
+        #if subs.len() > 0 [
+          #for sub in subs [
+            #render_sub_problem(sub)
+          ]
+        ] else [
+          // Choices or Subjective answer box
+          #render_answer_area(prob)
+        ]
       ]
-
-      #bogi_box(prob.at("bogi", default: ()))
-
-      // Choices or Subjective answer box
-      #render_answer_area(prob)
     ]
   ]
 }

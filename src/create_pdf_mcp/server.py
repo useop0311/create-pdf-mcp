@@ -13,16 +13,20 @@ from .models.figures import FigureSpec
 from .processors.figure_renderer import render_figure_to_svg
 from .storage import get_storage_backend, generate_qr_code_png, LocalStorage
 from .typst_engine import generate_typst_document, compile_typst_to_pdf, get_pdf_page_count
+from .typst_engine.compiler import _extract_standalone_group_header
 
 
 # Initialize MCPServer (MCP 2.x standard)
 mcp = MCPServer(
     name="CreatePDFMCP",
     instructions=(
-        "CreatePDFMCP is a specialized MCP server for generating high-quality Korean Math and Physics "
+        "CreatePDFMCP is a specialized MCP server for generating high-quality Korean Math, Physics, and general "
         "exam/worksheet PDFs (수능 2단 칼럼, 패드 1페이지 1문항 필기용 모눈/백지, 1단 워크북) "
         "with 3-tier vector figures (SymPy function plots, declarative geometry/physics diagrams, and raw SVGs). "
-        "Always structure problems with Markdown and LaTeX math ($...$, $$...$$), conditions (가/나), and <보기> (ㄱ/ㄴ/ㄷ)."
+        "Supports Markdown and LaTeX math ($...$, $$...$$), conditions (가/나), <보기> (ㄱ/ㄴ/ㄷ), "
+        "grouped question headers (e.g. group_header='[4~8번] 빈칸에 들어갈 알맞은 문장을 고르시오.'), "
+        "fill-in-the-blank expressions (____, [빈칸], [빈칸: (가)], (      ), $\\boxed{...}$), "
+        "and multi-part sub-questions (sub_problems: (1), (2), ... under a parent problem like '6. 물음에 답하시오.')."
     ),
 )
 
@@ -59,10 +63,12 @@ async def create_exam_pdf(request: ExamPDFRequest) -> ExamPDFResponse:
         sol_pdf_bytes = compile_typst_to_pdf(sol_typst_src)
         sol_url = await storage.save_pdf(file_id, sol_pdf_bytes, f"{safe_title or 'exam'}_solutions.pdf")
 
+    graded_count = sum(1 for p in request.problems if _extract_standalone_group_header(p) is None) or len(request.problems)
+
     summary = (
         f"### 📄 문제지 PDF 생성이 완료되었습니다!\n"
         f"- **제목**: {request.title} ({request.subtitle or ''})\n"
-        f"- **레이아웃**: `{request.layout_mode}` ({page_count} 페이지, 총 {len(request.problems)}문항)\n"
+        f"- **레이아웃**: `{request.layout_mode}` ({page_count} 페이지, 총 {graded_count}문항)\n"
         f"- **문제지 다운로드**: [PDF 다운로드]({pdf_url})\n"
     )
     if sol_url:
@@ -74,7 +80,7 @@ async def create_exam_pdf(request: ExamPDFRequest) -> ExamPDFResponse:
         qr_code_url=qr_code_url,
         solution_pdf_url=sol_url,
         page_count=page_count,
-        problem_count=len(request.problems),
+        problem_count=graded_count,
         layout_mode=request.layout_mode,
         summary_markdown=summary,
     )
@@ -103,11 +109,26 @@ def get_exam_schema_guide() -> str:
     return """
 # Korean Math & Physics Exam Authoring Guide
 
-## 1. Math Formula Syntax
+## 1. Math Formula & Blank (빈칸) Syntax
 - Use standard LaTeX math: `$f(x) = x^3 - 3x + 1$`, `$\\int_0^1 f(x)dx$`, `$\\frac{a}{b}$`.
 - For prime notation, use `$f'(x)$` or `$f^{\\prime}(x)$`.
+- For fill-in-the-blank (빈칸) questions:
+  - Underline blanks in text or math: `____` (2+ underscores) or `$\\underline{\\hspace{2cm}}$`
+  - Boxed blanks: `[빈칸]`, `[빈칸: (가)]`, or in math `$\\boxed{\\text{(가)}}$`, `$\\boxed{\\quad}$`
+  - Wide parentheses/brackets: `(        )` or `[        ]` or `(   가   )`
 
-## 2. Korean Exam Components
+## 2. Grouped Questions (`[4~8번] ...`) & Sub-Questions (`6. 물음에 답하시오. (1) ... (2) ...`)
+- **Grouped Questions (`group_header` / `group_passage`)**:
+  - Set `group_header: "[4~8번] 빈칸에 들어갈 알맞은 문장을 고르시오."` on the first problem (or all problems in the range; consecutive duplicates are automatically deduplicated).
+  - Optionally include `group_passage`, `group_conditions`, `group_bogi`, or `group_figures` for shared reading passages or candidate boxes.
+- **Sub-Questions (`sub_problems`)**:
+  - Use `sub_problems` inside `ProblemItem` for multi-part problems (새끼문제):
+    - Parent `stem`: `"다음 물음에 답하시오."`
+    - `sub_problems`: list of items with `number` (`"(1)"`, `"(2)"`), `stem`, `points`, `choices` (or `subjective_type`), `answer`, and `solution`.
+  - Inline sub-questions in `stem` (e.g. `"물음에 답하시오. (1) ... (2) ..."`) are also automatically formatted onto separate lines.
+
+## 3. Korean Exam Components
+- `passage`: Reading passage or fill-in-the-blank box for an individual problem.
 - `conditions`: List of condition strings like `["(가) 모든 실수 $x$에 대하여 $f(x) \\ge 0$", "(나) $f(1) = 2$"]`
 - `bogi`: List of items like `["ㄱ. $f(0) = 0$", "ㄴ. $f'(1) > 0$", "ㄷ. 방정식 $f(x)=0$은 오직 하나의 실근을 갖는다."]`.
 - `choices`: List of 5 choices. Numbering ①~⑤ is automatically formatted.

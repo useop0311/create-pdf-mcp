@@ -94,3 +94,32 @@ def test_markdown_with_math_and_korean_labels():
     assert "*다음*" in result
     assert r"\<그림 1>" in result
     assert compile_typst_to_pdf(f"[{result}]")
+
+
+def test_blank_expressions_and_inline_subquestions():
+    # 1. Plain-text blanks: underscores (even and odd counts), [빈칸], [빈칸: (가)], wide parens/brackets
+    blank_text = (
+        "[4~8번] 빈칸에 들어갈 알맞은 문장을 고르시오.\n"
+        "다음 문장의 빈칸 _____ 또는 ____ 에 들어갈 알맞은 표현과 "
+        "[빈칸], [빈칸: (가)], (        ), [        ], (   나   )를 채우시오."
+    )
+    res_blank = markdown_to_typst(blank_text)
+    assert "#box(" in res_blank
+    assert "#h(" in res_blank
+    assert compile_typst_to_pdf(f"[{res_blank}]")
+
+    # 2. Math-mode blanks: \boxed, \underline{\hspace{2cm}}, \underline{\quad}, \phantom, ____
+    math_blank = (
+        r"f(x) = \boxed{\text{(가)}} + \boxed{\quad} + \underline{\hspace{2cm}} + \underline{\quad} + \phantom{x^2} + ____"
+    )
+    res_math_blank = latex_math_to_typst(math_blank)
+    assert "#box(" in res_math_blank
+    assert "#hide[" in res_math_blank
+    assert compile_typst_to_pdf(f"$ {res_math_blank} $")
+
+    # 3. Inline sub-questions "(1) ~~~ (2) ~~~" on a single line
+    inline_sub = "6번. 물음에 답하시오. (1) 함수 $f(x)$의 도함수를 구하시오. (2) $f'(1)$의 값을 구하시오."
+    res_sub = markdown_to_typst(inline_sub)
+    assert "*(1)*" in res_sub
+    assert "*(2)*" in res_sub
+    assert compile_typst_to_pdf(f"[{res_sub}]")
