@@ -22,7 +22,7 @@ COPY src/ /app/src/
 RUN pip install --no-cache-dir --no-build-isolation --no-deps .
 
 # Warm up typst package cache (pre-fetch @preview/mitex if needed or install local packages)
-ENV TYPST_FONT_PATHS=/usr/share/fonts/opentype/noto:/usr/share/fonts/truetype
+ENV TYPST_FONT_PATHS=/app/src/create_pdf_mcp/assets/fonts:/usr/share/fonts/opentype/noto:/usr/share/fonts/truetype
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src
 

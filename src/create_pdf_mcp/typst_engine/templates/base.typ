@@ -1,20 +1,37 @@
 // Korean CSAT / Mock-Exam Common Typst Macros
 
-#let KOREAN_FONTS = (
-  "AppleMyungjo",
-  "Noto Serif CJK KR",
-  "Noto Serif KR",
-  "NanumMyeongjo",
-  "Batang",
+#let KOREAN_SANS_FONTS = (
+  "IBM Plex Sans KR",
+  "Pretendard",
   "Apple SD Gothic Neo",
   "Noto Sans CJK KR",
   "Noto Sans KR",
   "NanumGothic",
   "Malgun Gothic",
-  "Pretendard",
   "New Computer Modern",
-  "DejaVu Serif",
 )
+
+#let KOREAN_SERIF_FONTS = (
+  "AppleMyungjo",
+  "Noto Serif CJK KR",
+  "Noto Serif KR",
+  "NanumMyeongjo",
+  "Batang",
+  "IBM Plex Sans KR",
+  "Apple SD Gothic Neo",
+  "Noto Sans CJK KR",
+  "New Computer Modern",
+)
+
+#let KOREAN_FONTS = KOREAN_SERIF_FONTS
+
+#let get_korean_fonts(style) = {
+  if style == "sans" {
+    KOREAN_SANS_FONTS
+  } else {
+    KOREAN_SERIF_FONTS
+  }
+}
 
 #let to_markup(val) = {
   if val == none {

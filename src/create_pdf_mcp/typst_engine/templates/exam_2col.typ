@@ -40,10 +40,12 @@
   subject_badge: none,
   footer_text: none,
   footer_note: none,
+  font_style: "serif",
   problems: ()
 ) = {
+  let fonts = get_korean_fonts(font_style)
   set text(
-    font: KOREAN_FONTS,
+    font: fonts,
     size: 9.8pt,
     lang: "ko"
   )

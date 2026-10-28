@@ -11,11 +11,18 @@ import typst
 logger = logging.getLogger(__name__)
 
 from ..models.exam import ExamPDFRequest, PassageGroup, ProblemItem, SubProblemItem
+from ..models.concept import ConceptPDFRequest, ConceptSection, CalloutBox, ConceptExampleItem
 from ..processors.math_text import markdown_to_typst
+from ..processors.concept_markdown import (
+    concept_inline_to_typst,
+    concept_markdown_to_typst,
+    split_markdown_into_sections,
+)
 from ..processors.figure_renderer import render_figure_to_svg
 
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+FONTS_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
 
 
 def _escape_typst_string(s: str) -> str:
@@ -26,11 +33,15 @@ def _escape_typst_string(s: str) -> str:
     return f'"{escaped}"'
 
 
-def _render_figures_list(figures: list) -> list[str]:
+def _render_figures_list(figures: list, scale: float = 1.0) -> list[str]:
     rendered: list[str] = []
     for fig in figures:
         try:
-            rendered.append(render_figure_to_svg(fig))
+            if scale != 1.0 and hasattr(fig, "width_cm"):
+                scaled_fig = fig.model_copy(update={"width_cm": round(fig.width_cm * scale, 2)})
+                rendered.append(render_figure_to_svg(scaled_fig))
+            else:
+                rendered.append(render_figure_to_svg(fig))
         except Exception:
             pass
     return rendered
@@ -706,6 +717,7 @@ def generate_typst_document(request: ExamPDFRequest, for_solutions_only: bool = 
         return "\n".join(lines)
 
     layout = request.layout_mode
+    font_style = getattr(request, "font_style", "serif")
     if layout == "exam_2col":
         tmpl_path = (TEMPLATES_DIR / "exam_2col.typ").resolve().as_posix()
         lines.append(f'#import "{tmpl_path}": *')
@@ -719,6 +731,7 @@ def generate_typst_document(request: ExamPDFRequest, for_solutions_only: bool = 
             f'subject_badge: {sub_badge}, '
             f'footer_text: {footer_t}, '
             f'footer_note: {footer_n}, '
+            f'font_style: "{font_style}", '
             f'problems: problems_data'
             f')'
         )
@@ -737,6 +750,7 @@ def generate_typst_document(request: ExamPDFRequest, for_solutions_only: bool = 
             f'footer_text: {footer_t}, '
             f'footer_note: {footer_n}, '
             f'pad_note_style: "{request.pad_note_style}", '
+            f'font_style: "{font_style}", '
             f'problems: problems_data'
             f')'
         )
@@ -754,6 +768,7 @@ def generate_typst_document(request: ExamPDFRequest, for_solutions_only: bool = 
             f'subject_badge: {sub_badge}, '
             f'footer_text: {footer_t}, '
             f'footer_note: {footer_n}, '
+            f'font_style: "{font_style}", '
             f'problems: problems_data'
             f')'
         )
@@ -775,16 +790,290 @@ def generate_typst_document(request: ExamPDFRequest, for_solutions_only: bool = 
     return "\n".join(lines)
 
 
+def _estimate_section_units(raw_md: str, typst_body: str, callouts_count: int, figs_count: int, examples_count: int) -> float:
+    """Estimates vertical height units of a concept section (1 A4 page is roughly 42-46 units)."""
+    text_lines = len(raw_md) / 52.0
+    explicit_breaks = raw_md.count("\n") * 0.35
+    table_rows = raw_md.count("\n|") * 1.4
+    total_callouts = callouts_count + typst_body.count("#callout_box(")
+    total_figs = figs_count + typst_body.count("#image(")
+    return (
+        4.5  # section header banner
+        + text_lines
+        + explicit_breaks
+        + table_rows
+        + (total_callouts * 4.2)
+        + (total_figs * 9.5)
+        + (examples_count * 6.5)
+    )
+
+
+def _prepare_concept_sections_data(request: ConceptPDFRequest, density: str = "normal") -> list[dict]:
+    """
+    Transforms ConceptPDFRequest sections (or raw markdown) into structured dictionaries for Typst rendering.
+    """
+    sections = list(request.sections)
+    if not sections and request.markdown:
+        split_dicts = split_markdown_into_sections(request.markdown)
+        sections = [ConceptSection(**sd) for sd in split_dicts]
+    elif request.markdown and sections:
+        split_dicts = split_markdown_into_sections(request.markdown)
+        sections = [ConceptSection(**sd) for sd in split_dicts] + sections
+
+    if not sections:
+        sections = [ConceptSection(title=request.title, markdown=request.markdown or "")]
+
+    fig_scale = 0.82 if density == "compact" else (0.90 if density == "cozy" else 1.0)
+    global_fig_svgs = _render_figures_list(request.figures, scale=fig_scale)
+    theme = request.color_theme
+    sections_data = []
+    n_sections = len(sections)
+
+    for s_idx, sec in enumerate(sections):
+        sec_figs = _render_figures_list(sec.figures, scale=fig_scale)
+        all_figs = sec_figs + global_fig_svgs
+
+        raw_md = _join_text_or_list(sec.markdown)
+        typst_body, extracted_sidebar = concept_markdown_to_typst(
+            raw_md,
+            theme=theme,
+            figure_svgs=all_figs,
+        )
+
+        all_sidebar = [
+            concept_inline_to_typst(sn, theme=theme) for sn in sec.sidebar_notes
+        ] + [
+            concept_inline_to_typst(sn, theme=theme) for sn in extracted_sidebar
+        ]
+
+        # Callouts
+        callouts_data = []
+        for c in sec.callouts:
+            c_content_raw = _join_text_or_list(c.content)
+            c_body, _ = concept_markdown_to_typst(
+                c_content_raw,
+                theme=theme,
+                figure_svgs=_render_figures_list(c.figures, scale=fig_scale),
+            )
+            c_title = concept_inline_to_typst(c.title, theme=theme) if c.title else None
+            callouts_data.append({
+                "type": c.type,
+                "title": c_title,
+                "content": c_body,
+            })
+
+        # Examples
+        examples_data = []
+        for ex in sec.examples:
+            stem_typ, _ = concept_markdown_to_typst(ex.stem, theme=theme)
+            passage_typ = (
+                concept_markdown_to_typst(_join_text_or_list(ex.passage), theme=theme)[0]
+                if ex.passage else None
+            )
+            conds_typ = [concept_inline_to_typst(c, theme=theme) for c in ex.conditions]
+            bogi_typ = [concept_inline_to_typst(b, theme=theme) for b in ex.bogi]
+            choices_typ = [
+                concept_inline_to_typst(re.sub(r"^[①②③④⑤]\s*", "", ch.strip()), theme=theme)
+                for ch in ex.choices
+            ]
+            ans_typ = concept_inline_to_typst(ex.answer, theme=theme) if ex.answer else None
+            sol_typ = (
+                concept_markdown_to_typst(ex.solution, theme=theme)[0]
+                if ex.solution else None
+            )
+            ex_figs = _render_figures_list(ex.figures, scale=fig_scale)
+            sol_figs = _render_figures_list(ex.solution_figures, scale=fig_scale)
+
+            examples_data.append({
+                "label": ex.label or "개념 확인 예제",
+                "points": ex.points,
+                "topic_tag": ex.topic_tag,
+                "stem": stem_typ,
+                "passage": passage_typ,
+                "conditions": conds_typ,
+                "bogi": bogi_typ,
+                "choices": choices_typ,
+                "figures_svg": ex_figs,
+                "answer": ans_typ,
+                "solution": sol_typ,
+                "solution_figures_svg": sol_figs,
+            })
+
+        est_units = _estimate_section_units(
+            raw_md=raw_md,
+            typst_body=typst_body,
+            callouts_count=len(callouts_data),
+            figs_count=len(sec.figures),
+            examples_count=len(examples_data),
+        )
+
+        # Determine whether this section should be kept together as an unbreakable block
+        if request.page_fit_mode == "continuous" or sec.keep_together == "never":
+            is_breakable = True
+        elif sec.keep_together == "always":
+            is_breakable = False
+        else:
+            # 'auto' keep_together:
+            # If the section fits within a single page (est_units <= 38) and there are multiple sections
+            # (or layout is sidebar_note where splitting the 2-column grid looks jarring),
+            # keep the entire section together so it moves cleanly to the next page instead of splitting mid-section.
+            if request.layout_mode == "sidebar_note":
+                is_breakable = est_units > 40.0
+            elif n_sections >= 2:
+                is_breakable = est_units > 36.0
+            else:
+                is_breakable = True
+
+        page_break_before = (
+            True
+            if (request.page_fit_mode == "section_per_page" and s_idx > 0)
+            else sec.page_break_before
+        )
+
+        sections_data.append({
+            "badge": sec.badge,
+            "title": concept_inline_to_typst(sec.title, theme=theme),
+            "subtitle": concept_inline_to_typst(sec.subtitle, theme=theme) if sec.subtitle else None,
+            "learning_objectives": [concept_inline_to_typst(o, theme=theme) for o in sec.learning_objectives],
+            "typst_body": typst_body,
+            "sidebar_notes": all_sidebar,
+            "callouts": callouts_data,
+            "examples": examples_data,
+            "page_break_before": page_break_before,
+            "is_breakable": is_breakable,
+            "estimated_units": est_units,
+        })
+
+    return sections_data
+
+
+def generate_concept_typst_document(request: ConceptPDFRequest, density: str | None = None) -> str:
+    """
+    Constructs the complete Typst source code for Concept Book PDF generation.
+    """
+    effective_density = density or ("compact" if request.page_fit_mode == "compact_fit" else "normal")
+    sections_data = _prepare_concept_sections_data(request, density=effective_density)
+    sections_json_str = json.dumps(sections_data, ensure_ascii=False)
+    encoded_json = json.dumps(sections_json_str, ensure_ascii=False)
+
+    footer_t = f'"{request.footer_text}"' if request.footer_text else "none"
+    footer_n = f'"{request.footer_note}"' if request.footer_note else "none"
+    sub_badge = f'"{request.subject_badge}"' if request.subject_badge else "none"
+    subtitle = f'"{request.subtitle}"' if request.subtitle else "none"
+    show_toc_str = "true" if request.show_toc else "false"
+
+    base_path = (TEMPLATES_DIR / "concept_base.typ").resolve().as_posix()
+    lines = [
+        f'#import "{base_path}": *',
+        f'#let sections_data = json(bytes({encoded_json}))',
+    ]
+
+    layout = request.layout_mode
+    if layout == "sidebar_note":
+        tmpl_path = (TEMPLATES_DIR / "sidebar_note.typ").resolve().as_posix()
+        render_func = "render_sidebar_note"
+    elif layout == "summary_2col":
+        tmpl_path = (TEMPLATES_DIR / "summary_2col.typ").resolve().as_posix()
+        render_func = "render_summary_2col"
+    else:  # concept_book
+        tmpl_path = (TEMPLATES_DIR / "concept_book.typ").resolve().as_posix()
+        render_func = "render_concept_book"
+
+    lines.append(f'#import "{tmpl_path}": *')
+    lines.append(
+        f'#{render_func}('
+        f'title: "{request.title}", '
+        f'subtitle: {subtitle}, '
+        f'subject_badge: {sub_badge}, '
+        f'footer_text: {footer_t}, '
+        f'footer_note: {footer_n}, '
+        f'color_theme: "{request.color_theme}", '
+        f'font_style: "{request.font_style}", '
+        f'show_toc: {show_toc_str}, '
+        f'example_solution_mode: "{request.example_solution_mode}", '
+        f'density: "{effective_density}", '
+        f'sections: sections_data'
+        f')'
+    )
+
+    return "\n".join(lines)
+
+
+def _get_last_page_char_count(pdf_bytes: bytes) -> int:
+    """Returns the character count of the last page (excluding header/footer boilerplate) to detect slight overflows."""
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        if len(reader.pages) <= 1:
+            return 9999
+        last_txt = reader.pages[-1].extract_text() or ""
+        lines = [line.strip() for line in last_txt.splitlines() if line.strip()]
+        # Filter out typical running header / footer lines (first and last lines)
+        body_lines = [
+            ln for ln in lines
+            if not re.match(r"^[•\-]\s*\d+\s*[•\-]$", ln)
+        ]
+        return sum(len(ln) for ln in body_lines)
+    except Exception:
+        return 9999
+
+
+def compile_concept_pdf(request: ConceptPDFRequest) -> bytes:
+    """
+    Compiles a ConceptPDFRequest into PDF bytes with smart page-fitting:
+    - In 'compact_fit' mode, compiles directly with 'compact' density.
+    - In 'smart' mode (default), compiles with 'normal' density first; if the document
+      slightly overflows onto an extra page (e.g. a 1-page concept sheet spilling a few lines onto page 2,
+      or 2 compact sections that can cleanly fit on 1 page without breaking), automatically tries
+      'cozy' and 'compact' densities to eliminate the awkward spillover page.
+    """
+    if request.page_fit_mode == "compact_fit":
+        return compile_typst_to_pdf(generate_concept_typst_document(request, density="compact"))
+
+    typ_normal = generate_concept_typst_document(request, density="normal")
+    pdf_normal = compile_typst_to_pdf(typ_normal)
+
+    if request.page_fit_mode != "smart":
+        return pdf_normal
+
+    pages_normal = get_pdf_page_count(pdf_normal)
+    if pages_normal <= 1:
+        return pdf_normal
+
+    # Check if the overflow onto the last page is small enough that fitting onto (pages_normal - 1) is desirable
+    last_page_chars = _get_last_page_char_count(pdf_normal)
+    if last_page_chars <= 520:
+        # Try 'cozy' first (gentle tightening)
+        typ_cozy = generate_concept_typst_document(request, density="cozy")
+        pdf_cozy = compile_typst_to_pdf(typ_cozy)
+        if get_pdf_page_count(pdf_cozy) < pages_normal:
+            return pdf_cozy
+
+        # Try 'compact' next
+        typ_compact = generate_concept_typst_document(request, density="compact")
+        pdf_compact = compile_typst_to_pdf(typ_compact)
+        if get_pdf_page_count(pdf_compact) < pages_normal:
+            return pdf_compact
+
+    return pdf_normal
+
+
 def compile_typst_to_pdf(typst_source: str) -> bytes:
     """
-    Compiles Typst source string into PDF bytes using typst Python library.
+    Compiles Typst source string into PDF bytes using typst Python library and bundled fonts.
     """
     with tempfile.NamedTemporaryFile("w", suffix=".typ", delete=False, encoding="utf-8") as f:
         f.write(typst_source)
         temp_path = f.name
 
+    font_paths = [str(FONTS_DIR)]
+    env_paths = os.environ.get("TYPST_FONT_PATHS")
+    if env_paths:
+        for ep in env_paths.split(":"):
+            if ep.strip() and ep.strip() not in font_paths:
+                font_paths.append(ep.strip())
+
     try:
-        pdf_bytes = typst.compile(temp_path, root="/")
+        pdf_bytes = typst.compile(temp_path, root="/", font_paths=font_paths)
         return pdf_bytes
     except Exception as e:
         logger.error(f"Typst compilation failed: {e}\nTypst source snippet:\n{typst_source[:1500]}")

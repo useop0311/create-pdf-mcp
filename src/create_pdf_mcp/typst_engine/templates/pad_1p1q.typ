@@ -9,10 +9,12 @@
   footer_text: none,
   footer_note: none,
   pad_note_style: none,
+  font_style: "serif",
   problems: ()
 ) = {
+  let fonts = get_korean_fonts(font_style)
   set text(
-    font: KOREAN_FONTS,
+    font: fonts,
     size: 10.5pt,
     lang: "ko"
   )

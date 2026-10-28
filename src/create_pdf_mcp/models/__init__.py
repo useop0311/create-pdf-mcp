@@ -16,6 +16,13 @@ from .figures import (
     ShadedArea,
 )
 from .exam import ExamPDFRequest, ExamPDFResponse, PassageGroup, ProblemItem, SubProblemItem
+from .concept import (
+    CalloutBox,
+    ConceptExampleItem,
+    ConceptPDFRequest,
+    ConceptPDFResponse,
+    ConceptSection,
+)
 
 __all__ = [
     "FigureSpec",
@@ -38,4 +45,9 @@ __all__ = [
     "PassageGroup",
     "ProblemItem",
     "SubProblemItem",
+    "CalloutBox",
+    "ConceptExampleItem",
+    "ConceptPDFRequest",
+    "ConceptPDFResponse",
+    "ConceptSection",
 ]

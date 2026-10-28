@@ -288,6 +288,10 @@ class ExamPDFRequest(BaseModel):
         "exam_2col",
         description="exam_2col: 수능형 2단 칼럼 / pad_1p1q: 패드 필기용 1페이지 1문항 / workbook: 1단 다문항 학습지",
     )
+    font_style: Literal["serif", "sans"] = Field(
+        "serif",
+        description="글꼴 스타일: 'serif'(기본 한국어 수능 명조체), 'sans'(IBM Plex Sans KR 고딕체)",
+    )
     problems_per_page: int | None = Field(
         None,
         description="exam_2col 모드에서 한 페이지 최대 문항 수 (선택 사항)",

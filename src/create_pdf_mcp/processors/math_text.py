@@ -236,6 +236,7 @@ def _split_unknown_math_identifiers(text: str) -> str:
     # Do not split inside quoted strings (e.g. "text") or \x00MATHPH...\x00 placeholders
     parts = re.split(r'("[^"]*"|\x00MATHPH\d+\x00)', text)
     for i in range(0, len(parts), 2):
+        parts[i] = re.sub(r"([가-힣ㄱ-ㅎㅏ-ㅣ]+)", r'"\1"', parts[i])
         parts[i] = re.sub(r"(?<![a-zA-Z])[a-zA-Z]{2,}(?![a-zA-Z:])", repl, parts[i])
     return "".join(parts)
 
@@ -246,6 +247,16 @@ def latex_math_to_typst(math_str: str) -> str:
     Enables native, fast, offline Typst compilation while allowing models and users to write standard LaTeX.
     """
     s = math_str.strip()
+    # Recover accidental tab escape from "\to" or "\times" or "\theta" or "\tfrac" or "\text"
+    s = (
+        s.replace("\to", r"\to")
+        .replace("\times", r"\times")
+        .replace("\theta", r"\theta")
+        .replace("\tfrac", r"\tfrac")
+        .replace("\text", r"\text")
+        .replace("\triangle", r"\triangle")
+        .replace("\tau", r"\tau")
+    )
     math_placeholders: list[str] = []
 
     # Normalize primes: f'(x) or f^{\prime}(x) -> f'(x)
